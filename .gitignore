@@ -1,0 +1,36 @@
+# Compiled Binaries
+*.dll
+*.exe
+*.obj
+*.pdb
+*.lib
+*.exp
+*.o
+*.so
+
+# IDE Files
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj*
+*.user
+*.suo
+*.swp
+*.swo
+
+# Sierra Chart / Windows Artifacts
+*.dat
+*.scid
+*.stg
+*.bak
+*.study_settings
+Thumbs.db
+.DS_Store
+
+# Logs and State
+*.log
+telegram_state.json
+
+# Sensitive Config
+config.json

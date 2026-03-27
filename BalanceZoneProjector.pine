@@ -1,0 +1,355 @@
+// ============================================================================
+// Balance Zone Projector (TradingView Pine Script)
+// Version: 3.0.0
+// Port of: Balance Zone Engine (Sierra Chart ACSIL)
+// Author:  Ian @hayian0078
+//
+// Summary:
+//   Projects balance zones above/below up to 3 anchor zones. Each subsequent
+//   zone represents a 1x, 2x, 3x... multiple of the anchor height.
+//
+// Usage:
+//   1. Add indicator to chart
+//   2. Set Anchor 1 High/Low prices (edit in settings anytime)
+//   3. Optionally enable and set Anchor 2 and 3
+//   4. All anchors share the same visual settings
+//
+// Zone Groups:
+//   - Group 1: Zones 1-2 (nearest to anchor)
+//   - Group 2: Zones 3-6
+//   - Group 3: Zones 7-14
+//   - Group 4: Zones 15-30
+// ============================================================================
+
+//@version=5
+indicator("Balance Zone Projector", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+// --- Anchor 1 ---
+grp_a1 = "═══ ANCHOR 1 ═══"
+a1_high      = input.price(0.0, "Anchor 1 High", confirm=true, group=grp_a1, tooltip="Top price of anchor zone 1")
+a1_low       = input.price(0.0, "Anchor 1 Low",  confirm=true, group=grp_a1, tooltip="Bottom price of anchor zone 1")
+a1_bars_back = input.int(100, "Bars Back", minval=0, maxval=5000, group=grp_a1, tooltip="How far left to start this anchor's zones")
+a1_bars_fwd  = input.int(50, "Bars Forward", minval=0, maxval=6000, group=grp_a1, tooltip="How far right to extend this anchor's zones")
+
+// --- Anchor 2 ---
+grp_a2 = "═══ ANCHOR 2 ═══"
+a2_enable    = input.bool(false, "Enable Anchor 2", group=grp_a2)
+a2_high      = input.float(0.0, "Anchor 2 High", group=grp_a2, tooltip="Top price of anchor zone 2 (edit in settings)")
+a2_low       = input.float(0.0, "Anchor 2 Low", group=grp_a2, tooltip="Bottom price of anchor zone 2 (edit in settings)")
+a2_bars_back = input.int(200, "Bars Back", minval=0, maxval=5000, group=grp_a2, tooltip="How far left to start this anchor's zones")
+a2_bars_fwd  = input.int(50, "Bars Forward", minval=0, maxval=5000, group=grp_a2, tooltip="How far right from the left edge to extend zones")
+
+// --- Anchor 3 ---
+grp_a3 = "═══ ANCHOR 3 ═══"
+a3_enable    = input.bool(false, "Enable Anchor 3", group=grp_a3)
+a3_high      = input.float(0.0, "Anchor 3 High", group=grp_a3, tooltip="Top price of anchor zone 3 (edit in settings)")
+a3_low       = input.float(0.0, "Anchor 3 Low", group=grp_a3, tooltip="Bottom price of anchor zone 3 (edit in settings)")
+a3_bars_back = input.int(300, "Bars Back", minval=0, maxval=5000, group=grp_a3, tooltip="How far left to start this anchor's zones")
+a3_bars_fwd  = input.int(50, "Bars Forward", minval=0, maxval=5000, group=grp_a3, tooltip="How far right from the left edge to extend zones")
+
+// --- Projection Range ---
+grp_proj = "═══ PROJECTION RANGE ═══"
+enable_up     = input.bool(true, "Enable Up Projections", group=grp_proj)
+enable_down   = input.bool(true, "Enable Down Projections", group=grp_proj)
+max_groups_up = input.int(4, "Max Up Groups (0-4)", minval=0, maxval=4, group=grp_proj, tooltip="0=None, 1=2 zones, 2=6 zones, 3=14 zones, 4=30 zones")
+max_groups_dn = input.int(4, "Max Down Groups (0-4)", minval=0, maxval=4, group=grp_proj, tooltip="0=None, 1=2 zones, 2=6 zones, 3=14 zones, 4=30 zones")
+
+// --- Drawing Settings ---
+grp_draw = "═══ DRAWING SETTINGS ═══"
+show_borders  = input.bool(true, "Show Zone Borders", group=grp_draw)
+
+// --- Zone Labels ---
+grp_labels = "═══ ZONE LABELS ═══"
+show_zone_labels   = input.bool(true, "Show Zone Labels", group=grp_labels)
+label_anchor       = input.string("Cost Basis", "Anchor Label", group=grp_labels)
+label_up_template  = input.string("Profit Zone x{X}", "Up Zone Template", group=grp_labels, tooltip="Use {X} for multiplier number")
+label_dn_template  = input.string("Discount Zone x{X}", "Down Zone Template", group=grp_labels, tooltip="Use {X} for multiplier number")
+label_font_size    = input.string("normal", "Label Font Size", options=["tiny", "small", "normal", "large", "huge"], group=grp_labels)
+label_position     = input.string("left", "Label Position", options=["left", "right"], group=grp_labels)
+
+// --- Anchor Zone Visuals ---
+grp_anchor_vis = "═══ ANCHOR ZONE VISUALS ═══"
+c_anchor   = input.color(color.new(#2962ff, 0), "Anchor Fill Color", group=grp_anchor_vis)
+t_anchor   = input.int(75, "Anchor Transparency", minval=0, maxval=100, group=grp_anchor_vis)
+
+// --- Up Zone Visuals ---
+grp_up = "═══ UP ZONES ═══"
+c_up_12    = input.color(color.new(#00FF00, 0), "Up 1-2 Fill", group=grp_up)
+t_up_12    = input.int(75, "Up 1-2 Transparency", minval=0, maxval=100, group=grp_up)
+c_up_36    = input.color(color.new(#FF00FF, 0), "Up 3-6 Fill", group=grp_up)
+t_up_36    = input.int(80, "Up 3-6 Transparency", minval=0, maxval=100, group=grp_up)
+c_up_714   = input.color(color.new(#00FF40, 0), "Up 7-14 Fill", group=grp_up)
+t_up_714   = input.int(85, "Up 7-14 Transparency", minval=0, maxval=100, group=grp_up)
+c_up_1530  = input.color(color.new(#FFFFFF, 0), "Up 15-30 Fill", group=grp_up)
+t_up_1530  = input.int(70, "Up 15-30 Transparency", minval=0, maxval=100, group=grp_up)
+
+// --- Down Zone Visuals ---
+grp_dn = "═══ DOWN ZONES ═══"
+c_dn_12    = input.color(color.new(#FF0000, 0), "Down 1-2 Fill", group=grp_dn)
+t_dn_12    = input.int(75, "Down 1-2 Transparency", minval=0, maxval=100, group=grp_dn)
+c_dn_36    = input.color(color.new(#00FFFF, 0), "Down 3-6 Fill", group=grp_dn)
+t_dn_36    = input.int(80, "Down 3-6 Transparency", minval=0, maxval=100, group=grp_dn)
+c_dn_714   = input.color(color.new(#FF0000, 0), "Down 7-14 Fill", group=grp_dn)
+t_dn_714   = input.int(85, "Down 7-14 Transparency", minval=0, maxval=100, group=grp_dn)
+c_dn_1530  = input.color(color.new(#FFFFFF, 0), "Down 15-30 Fill", group=grp_dn)
+t_dn_1530  = input.int(70, "Down 15-30 Transparency", minval=0, maxval=100, group=grp_dn)
+
+// --- Midline Visuals ---
+grp_mid = "═══ MIDLINES ═══"
+show_midlines    = input.bool(true, "Show Midlines", group=grp_mid)
+c_midline        = input.color(color.gray, "Midline Color", group=grp_mid)
+midline_style    = input.string("dotted", "Midline Style", options=["solid", "dashed", "dotted"], group=grp_mid)
+show_midline_price = input.bool(false, "Show Price on Midline", group=grp_mid)
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// Convert group count (0-4) to max multiplier
+get_max_multiplier(grp_count) =>
+    switch grp_count
+        1 => 2
+        2 => 6
+        3 => 14
+        4 => 30
+        => 0
+
+// Get fill color for UP zones based on multiplier
+get_up_color(m) =>
+    if m <= 2
+        color.new(c_up_12, t_up_12)
+    else if m <= 6
+        color.new(c_up_36, t_up_36)
+    else if m <= 14
+        color.new(c_up_714, t_up_714)
+    else
+        color.new(c_up_1530, t_up_1530)
+
+// Get fill color for DOWN zones based on multiplier
+get_dn_color(m) =>
+    if m <= 2
+        color.new(c_dn_12, t_dn_12)
+    else if m <= 6
+        color.new(c_dn_36, t_dn_36)
+    else if m <= 14
+        color.new(c_dn_714, t_dn_714)
+    else
+        color.new(c_dn_1530, t_dn_1530)
+
+// Get border color (slightly less transparent than fill)
+get_border_color(fill_color, base_transp) =>
+    show_borders ? color.new(fill_color, math.max(0, base_transp - 30)) : color.new(fill_color, 100)
+
+// Convert midline style string to line style
+get_line_style() =>
+    switch midline_style
+        "solid"  => line.style_solid
+        "dashed" => line.style_dashed
+        => line.style_dotted
+
+// Convert font size string to size enum
+get_font_size() =>
+    switch label_font_size
+        "tiny"  => size.tiny
+        "small" => size.small
+        "large" => size.large
+        "huge"  => size.huge
+        => size.normal
+
+// Generate zone label text
+get_zone_label(is_up, multiplier) =>
+    template = is_up ? label_up_template : label_dn_template
+    str.replace_all(template, "{X}", str.tostring(multiplier))
+
+// =============================================================================
+// DRAWING ARRAYS
+// =============================================================================
+
+var box[]   drawn_boxes  = array.new_box()
+var line[]  drawn_lines  = array.new_line()
+var label[] drawn_labels = array.new_label()
+
+// Clear all previous drawings
+clear_drawings() =>
+    while array.size(drawn_boxes) > 0
+        box.delete(array.pop(drawn_boxes))
+    while array.size(drawn_lines) > 0
+        line.delete(array.pop(drawn_lines))
+    while array.size(drawn_labels) > 0
+        label.delete(array.pop(drawn_labels))
+
+// =============================================================================
+// DRAW ONE ANCHOR AND ITS PROJECTIONS
+// =============================================================================
+
+draw_anchor(anchor_high, anchor_low, left_bar, right_bar, lbl_bar, lbl_style) =>
+    // Normalize anchor (ensure top > bot)
+    top = math.max(anchor_high, anchor_low)
+    bot = math.min(anchor_high, anchor_low)
+    height = top - bot
+    
+    // Only draw if we have a valid anchor zone
+    if height > 0
+        // =====================================================================
+        // ANCHOR ZONE
+        // =====================================================================
+        c_anchor_fill   = color.new(c_anchor, t_anchor)
+        c_anchor_border = get_border_color(c_anchor, t_anchor)
+        
+        b_anchor = box.new(left_bar, top, right_bar, bot, 
+             border_color=c_anchor_border, 
+             border_style=line.style_solid, 
+             bgcolor=c_anchor_fill)
+        array.push(drawn_boxes, b_anchor)
+        
+        // Anchor label
+        if show_zone_labels and str.length(label_anchor) > 0
+            mid_anchor = (top + bot) / 2
+            lbl = label.new(lbl_bar, mid_anchor, label_anchor, 
+                 color=color.new(color.black, 100), 
+                 textcolor=color.white, 
+                 style=lbl_style, 
+                 size=get_font_size())
+            array.push(drawn_labels, lbl)
+        
+        // Anchor midline
+        if show_midlines
+            mid = (top + bot) / 2
+            l = line.new(left_bar, mid, right_bar, mid, color=c_midline, style=get_line_style())
+            array.push(drawn_lines, l)
+            
+            if show_midline_price
+                price_lbl = label.new(right_bar, mid, str.tostring(mid, format.mintick),
+                     color=color.new(color.black, 100),
+                     textcolor=c_midline,
+                     style=label.style_label_left,
+                     size=size.small)
+                array.push(drawn_labels, price_lbl)
+        
+        // =====================================================================
+        // UP PROJECTIONS
+        // =====================================================================
+        if enable_up
+            max_up = get_max_multiplier(max_groups_up)
+            if max_up > 0
+                for m = 1 to max_up
+                    p_bot = bot + (height * m)
+                    p_top = top + (height * m)
+                    
+                    c_fill = get_up_color(m)
+                    transp = m <= 2 ? t_up_12 : m <= 6 ? t_up_36 : m <= 14 ? t_up_714 : t_up_1530
+                    base_c = m <= 2 ? c_up_12 : m <= 6 ? c_up_36 : m <= 14 ? c_up_714 : c_up_1530
+                    c_border = get_border_color(base_c, transp)
+                    
+                    // Zone box
+                    b = box.new(left_bar, p_top, right_bar, p_bot, 
+                         border_color=c_border, 
+                         border_style=line.style_solid, 
+                         bgcolor=c_fill)
+                    array.push(drawn_boxes, b)
+                    
+                    // Zone label
+                    if show_zone_labels
+                        mid_zone = (p_top + p_bot) / 2
+                        lbl_txt = get_zone_label(true, m)
+                        lbl = label.new(lbl_bar, mid_zone, lbl_txt,
+                             color=color.new(color.black, 100),
+                             textcolor=color.white,
+                             style=lbl_style,
+                             size=get_font_size())
+                        array.push(drawn_labels, lbl)
+                    
+                    // Midline
+                    if show_midlines
+                        mid = (p_top + p_bot) / 2
+                        l = line.new(left_bar, mid, right_bar, mid, color=c_midline, style=get_line_style())
+                        array.push(drawn_lines, l)
+                        
+                        if show_midline_price
+                            price_lbl = label.new(right_bar, mid, str.tostring(mid, format.mintick),
+                                 color=color.new(color.black, 100),
+                                 textcolor=c_midline,
+                                 style=label.style_label_left,
+                                 size=size.small)
+                            array.push(drawn_labels, price_lbl)
+        
+        // =====================================================================
+        // DOWN PROJECTIONS
+        // =====================================================================
+        if enable_down
+            max_dn = get_max_multiplier(max_groups_dn)
+            if max_dn > 0
+                for m = 1 to max_dn
+                    p_top = top - (height * m)
+                    p_bot = bot - (height * m)
+                    
+                    c_fill = get_dn_color(m)
+                    transp = m <= 2 ? t_dn_12 : m <= 6 ? t_dn_36 : m <= 14 ? t_dn_714 : t_dn_1530
+                    base_c = m <= 2 ? c_dn_12 : m <= 6 ? c_dn_36 : m <= 14 ? c_dn_714 : c_dn_1530
+                    c_border = get_border_color(base_c, transp)
+                    
+                    // Zone box
+                    b = box.new(left_bar, p_top, right_bar, p_bot,
+                         border_color=c_border,
+                         border_style=line.style_solid,
+                         bgcolor=c_fill)
+                    array.push(drawn_boxes, b)
+                    
+                    // Zone label
+                    if show_zone_labels
+                        mid_zone = (p_top + p_bot) / 2
+                        lbl_txt = get_zone_label(false, m)
+                        lbl = label.new(lbl_bar, mid_zone, lbl_txt,
+                             color=color.new(color.black, 100),
+                             textcolor=color.white,
+                             style=lbl_style,
+                             size=get_font_size())
+                        array.push(drawn_labels, lbl)
+                    
+                    // Midline
+                    if show_midlines
+                        mid = (p_top + p_bot) / 2
+                        l = line.new(left_bar, mid, right_bar, mid, color=c_midline, style=get_line_style())
+                        array.push(drawn_lines, l)
+                        
+                        if show_midline_price
+                            price_lbl = label.new(right_bar, mid, str.tostring(mid, format.mintick),
+                                 color=color.new(color.black, 100),
+                                 textcolor=c_midline,
+                                 style=label.style_label_left,
+                                 size=size.small)
+                            array.push(drawn_labels, price_lbl)
+
+// =============================================================================
+// MAIN DRAWING LOGIC
+// =============================================================================
+
+if barstate.islast
+    clear_drawings()
+    
+    // Label style based on position setting
+    lbl_style = label_position == "left" ? label.style_label_right : label.style_label_left
+    
+    // Draw Anchor 1 (always if valid)
+    a1_left  = bar_index - a1_bars_back
+    a1_right = a1_left + a1_bars_fwd
+    a1_lbl   = label_position == "left" ? a1_left + 2 : a1_right - 2
+    draw_anchor(a1_high, a1_low, a1_left, a1_right, a1_lbl, lbl_style)
+    
+    // Draw Anchor 2 (if enabled) - always uses its own Bars Back
+    if a2_enable
+        a2_left  = bar_index - a2_bars_back
+        a2_right = a2_left + a2_bars_fwd
+        a2_lbl   = label_position == "left" ? a2_left + 2 : a2_right - 2
+        draw_anchor(a2_high, a2_low, a2_left, a2_right, a2_lbl, lbl_style)
+    
+    // Draw Anchor 3 (if enabled) - always uses its own Bars Back
+    if a3_enable
+        a3_left  = bar_index - a3_bars_back
+        a3_right = a3_left + a3_bars_fwd
+        a3_lbl   = label_position == "left" ? a3_left + 2 : a3_right - 2
+        draw_anchor(a3_high, a3_low, a3_left, a3_right, a3_lbl, lbl_style)

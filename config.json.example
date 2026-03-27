@@ -1,0 +1,5 @@
+{
+  "telegramBotToken": "YOUR_BOT_TOKEN_HERE",
+  "telegramChatId": "YOUR_CHAT_ID_HERE",
+  "manifestPath": "C:\\SierraChart\\Exports\\manifest.json"
+}
