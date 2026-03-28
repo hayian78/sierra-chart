@@ -1092,13 +1092,17 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
                 const int lineNum = markerBase + 2 * markerDrawIndex;
                 const int labelNum = markerBase + 2 * markerDrawIndex + 1;
                 
-                // Draw full vertical line
+                // Draw line from top of screen down to twice the box height
                 s_UseTool L;
                 L.Clear();
                 L.ChartNumber = sc.ChartNumber;
-                L.DrawingType = DRAWING_VERTICALLINE;
+                L.DrawingType = DRAWING_LINE;
                 L.Region = sc.GraphRegion;
                 L.BeginDateTime = dt;
+                L.EndDateTime = dt;
+                L.UseRelativeVerticalValues = 1;
+                L.BeginValue = 100.0f;
+                L.EndValue = 100.0f - 5.0f * (boxEnd - boxBegin);
                 L.Color = markers[m].color;
                 L.LineWidth = markerLineWidth;
                 L.LineStyle = (SubgraphLineStyles)lineStyleValue;
