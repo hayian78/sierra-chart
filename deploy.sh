@@ -7,12 +7,18 @@ FILENAME="$1"
 # Check if a filename was provided
 if [ -z "$FILENAME" ]; then
     echo "Usage: ./deploy.sh <filename.cpp>"
-    exit 1
+    echo ""
+    echo "Available studies to deploy:"
+    ls -1 *.cpp 2>/dev/null | sed 's/^/  - /'
+    exit 0
 fi
 
 # Check if the source file exists locally
 if [ ! -f "$FILENAME" ]; then
     echo "Error: Source file '$FILENAME' not found in current directory."
+    echo ""
+    echo "Available studies:"
+    ls -1 *.cpp 2>/dev/null | sed 's/^/  - /'
     exit 1
 fi
 
