@@ -26,6 +26,28 @@ static inline std::string ToUpperCopy(std::string s)
     return s;
 }
 
+static void ParseCommaSeparated(const char* raw, std::vector<std::string>& out)
+{
+    if (!raw || raw[0] == '\0') return;
+    std::string s(raw);
+    std::string cur;
+    for (char ch : s)
+    {
+        if (ch == ',')
+        {
+            std::string t = ToUpperCopy(TrimCopy(cur));
+            if (!t.empty()) out.push_back(t);
+            cur.clear();
+        }
+        else
+        {
+            cur.push_back(ch);
+        }
+    }
+    std::string t = ToUpperCopy(TrimCopy(cur));
+    if (!t.empty()) out.push_back(t);
+}
+
 SCSFExport scsf_DrawingCleaner(SCStudyInterfaceRef sc)
 {
     if (sc.SetDefaults)
@@ -67,11 +89,17 @@ SCSFExport scsf_DrawingCleaner(SCStudyInterfaceRef sc)
         sc.Input[9].Name = "Delete Horizontal Line Non-Extended (Segment)";
         sc.Input[9].SetYesNo(0);
 
-        sc.Input[10].Name = "Button Text";
-        sc.Input[10].SetString("Clean Drawings");
+        sc.Input[10].Name = "Delete Rectangles";
+        sc.Input[10].SetYesNo(0);
 
-        sc.Input[11].Name = "Exclusion Text (comma-separated)";
+        sc.Input[11].Name = "Inclusion Text (comma-separated)";
         sc.Input[11].SetString("");
+
+        sc.Input[12].Name = "Exclusion Text (comma-separated)";
+        sc.Input[12].SetString("");
+
+        sc.Input[13].Name = "Button Text";
+        sc.Input[13].SetString("Clean Drawings");
 
         return;
     }
@@ -80,43 +108,24 @@ SCSFExport scsf_DrawingCleaner(SCStudyInterfaceRef sc)
 
     // PERFORMANCE OPTIMIZATION: 
     // Early exit if this is not a button click and we are not on the very first bar of a load/recalculation.
-    // This ensures no loops or checks run during normal chart ticking.
     if (sc.UpdateStartIndex > 0 && sc.MenuEventID != ButtonID)
         return;
 
     // Initialize button text/state only when needed
     if (sc.UpdateStartIndex == 0)
     {
-        sc.SetCustomStudyControlBarButtonText(ButtonID, sc.Input[10].GetString());
+        sc.SetCustomStudyControlBarButtonText(ButtonID, sc.Input[13].GetString());
         sc.SetCustomStudyControlBarButtonEnable(ButtonID, 1);
     }
 
     // MAIN LOGIC: Only executes on button click
     if (sc.MenuEventID == ButtonID)
     {
-        // Parse exclusions into uppercase std::string vector
+        std::vector<std::string> inclusions;
+        ParseCommaSeparated(sc.Input[11].GetString(), inclusions);
+
         std::vector<std::string> exclusions;
-        const char* exclusionRaw = sc.Input[11].GetString();
-        if (exclusionRaw && exclusionRaw[0] != '\0')
-        {
-            std::string s(exclusionRaw);
-            std::string cur;
-            for (char ch : s)
-            {
-                if (ch == ',')
-                {
-                    std::string t = ToUpperCopy(TrimCopy(cur));
-                    if (!t.empty()) exclusions.push_back(t);
-                    cur.clear();
-                }
-                else
-                {
-                    cur.push_back(ch);
-                }
-            }
-            std::string t = ToUpperCopy(TrimCopy(cur));
-            if (!t.empty()) exclusions.push_back(t);
-        }
+        ParseCommaSeparated(sc.Input[12].GetString(), exclusions);
 
         std::vector<int> lineNumbersToDelete;
         s_UseTool Drawing;
@@ -141,16 +150,10 @@ SCSFExport scsf_DrawingCleaner(SCStudyInterfaceRef sc)
                     if (sc.Input[3].GetYesNo()) shouldDelete = true;
                     break;
                 case DRAWING_LINE: // Trendline
-                    // Check if it's specifically a horizontal segment (non-extended)
                     if (sc.Input[9].GetYesNo() && (Drawing.BeginValue == Drawing.EndValue))
-                    {
                         shouldDelete = true;
-                    }
-                    // Otherwise check if all trendlines should be deleted
                     else if (sc.Input[4].GetYesNo())
-                    {
                         shouldDelete = true;
-                    }
                     break;
                 case DRAWING_RAY:
                     if (sc.Input[5].GetYesNo()) shouldDelete = true;
@@ -164,16 +167,34 @@ SCSFExport scsf_DrawingCleaner(SCStudyInterfaceRef sc)
                 case DRAWING_PARALLEL_RAYS:
                     if (sc.Input[8].GetYesNo()) shouldDelete = true;
                     break;
+                case DRAWING_RECTANGLEHIGHLIGHT:
+                    if (sc.Input[10].GetYesNo()) shouldDelete = true;
+                    break;
             }
 
             if (shouldDelete)
             {
-                // Check exclusions (case-insensitive)
-                if (!exclusions.empty())
+                const char* dTextRaw = Drawing.Text.GetChars();
+                std::string drawTxtUpper = ToUpperCopy(dTextRaw ? dTextRaw : "");
+
+                // Mandatory Inclusions: If anything in this list, ONLY matching items are deleted.
+                if (!inclusions.empty())
                 {
-                    const char* dText = Drawing.Text.GetChars();
-                    std::string drawTxtUpper = ToUpperCopy(dText ? dText : "");
-                    
+                    bool foundInclusion = false;
+                    for (const auto& inc : inclusions)
+                    {
+                        if (drawTxtUpper.find(inc) != std::string::npos)
+                        {
+                            foundInclusion = true;
+                            break;
+                        }
+                    }
+                    if (!foundInclusion) shouldDelete = false;
+                }
+
+                // Exclusions: If there is a clash, the exclusion wins (don't delete).
+                if (shouldDelete && !exclusions.empty())
+                {
                     for (const auto& ex : exclusions)
                     {
                         if (drawTxtUpper.find(ex) != std::string::npos)
