@@ -43,43 +43,43 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 		Subgraph_VWAP.PrimaryColor = RGB(255, 0, 255); // Magenta
 		Subgraph_VWAP.DrawZeros = false;
 		
-		Subgraph_StdDev1Pos.Name = "STD 1 Pos";
+		Subgraph_StdDev1Pos.Name = "STD +1";
 		Subgraph_StdDev1Pos.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev1Pos.PrimaryColor = RGB(0, 255, 0);
 		
-		Subgraph_StdDev1Neg.Name = "STD 1 Neg";
+		Subgraph_StdDev1Neg.Name = "STD -1";
 		Subgraph_StdDev1Neg.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev1Neg.PrimaryColor = RGB(255, 0, 0);
 
-		Subgraph_StdDev2Pos.Name = "STD 2 Pos";
+		Subgraph_StdDev2Pos.Name = "STD +2";
 		Subgraph_StdDev2Pos.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev2Pos.PrimaryColor = RGB(0, 255, 0);
 		
-		Subgraph_StdDev2Neg.Name = "STD 2 Neg";
+		Subgraph_StdDev2Neg.Name = "STD -2";
 		Subgraph_StdDev2Neg.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev2Neg.PrimaryColor = RGB(255, 0, 0);
 
-		Subgraph_StdDev3Pos.Name = "STD 3 Pos";
+		Subgraph_StdDev3Pos.Name = "STD +3";
 		Subgraph_StdDev3Pos.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev3Pos.PrimaryColor = RGB(0, 255, 0);
 		
-		Subgraph_StdDev3Neg.Name = "STD 3 Neg";
+		Subgraph_StdDev3Neg.Name = "STD -3";
 		Subgraph_StdDev3Neg.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev3Neg.PrimaryColor = RGB(255, 0, 0);
 
-		Subgraph_StdDev4Pos.Name = "STD 4 Pos";
+		Subgraph_StdDev4Pos.Name = "STD +4";
 		Subgraph_StdDev4Pos.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev4Pos.PrimaryColor = RGB(0, 255, 0);
 		
-		Subgraph_StdDev4Neg.Name = "STD 4 Neg";
+		Subgraph_StdDev4Neg.Name = "STD -4";
 		Subgraph_StdDev4Neg.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev4Neg.PrimaryColor = RGB(255, 0, 0);
 
-		Subgraph_StdDev5Pos.Name = "STD 5 Pos";
+		Subgraph_StdDev5Pos.Name = "STD +5";
 		Subgraph_StdDev5Pos.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev5Pos.PrimaryColor = RGB(0, 255, 0);
 		
-		Subgraph_StdDev5Neg.Name = "STD 5 Neg";
+		Subgraph_StdDev5Neg.Name = "STD -5";
 		Subgraph_StdDev5Neg.DrawStyle = DRAWSTYLE_IGNORE; 
 		Subgraph_StdDev5Neg.PrimaryColor = RGB(255, 0, 0);
 
