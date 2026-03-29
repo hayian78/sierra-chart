@@ -25,10 +25,24 @@ fi
 TARGET_PATH="$TARGET_DIR/$FILENAME"
 ORIG_PATH="$TARGET_PATH.orig"
 
-# 1. Create a one-time 'original' backup if it doesn't exist
-if [ -f "$TARGET_PATH" ] && [ ! -f "$ORIG_PATH" ]; then
-    echo "Creating one-time backup of original: $ORIG_PATH"
-    cp "$TARGET_PATH" "$ORIG_PATH"
+# 1. Handle the 'original' backup
+if [ -f "$TARGET_PATH" ]; then
+    if [ -f "$ORIG_PATH" ]; then
+        echo "Backup file '$ORIG_PATH' already exists."
+        read -p "Overwrite existing backup? (y/N): " choice
+        case "$choice" in 
+          y|Y ) 
+            echo "Overwriting backup: $ORIG_PATH"
+            cp "$TARGET_PATH" "$ORIG_PATH"
+            ;;
+          * ) 
+            echo "Skipping backup. Existing '$ORIG_PATH' preserved."
+            ;;
+        esac
+    else
+        echo "Creating one-time backup of original: $ORIG_PATH"
+        cp "$TARGET_PATH" "$ORIG_PATH"
+    fi
 fi
 
 # 2. Deploy the current file
