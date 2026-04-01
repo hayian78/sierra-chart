@@ -69,6 +69,12 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     SCInputRef MarkerLabelColorInput           = sc.Input[42];
     SCInputRef MaxMarkersPerDayInput           = sc.Input[43];
     
+    // Forward Projections
+    SCInputRef HeaderProjections          = sc.Input[44];
+    SCInputRef ExtendActiveBlockInput     = sc.Input[45];
+    SCInputRef PreviewUpcomingBlockInput  = sc.Input[46];
+    SCInputRef PreviewMinutesInput        = sc.Input[47];
+    
     // Rendering mode
     SCInputRef StableRenderInput     = sc.Input[25];
     
@@ -237,6 +243,25 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         MaxMarkersPerDayInput.SetInt(50);
         MaxMarkersPerDayInput.SetIntLimits(1, 200);
         MaxMarkersPerDayInput.DisplayOrder = dispOrder++;
+
+        // ===== PROJECTIONS =====
+        HeaderProjections.Name = "===== PROJECTIONS =====";
+        HeaderProjections.SetInt(0);
+        HeaderProjections.SetIntLimits(0, 0);
+        HeaderProjections.DisplayOrder = dispOrder++;
+
+        ExtendActiveBlockInput.Name = "Extend Active Block into Future";
+        ExtendActiveBlockInput.SetYesNo(1);
+        ExtendActiveBlockInput.DisplayOrder = dispOrder++;
+
+        PreviewUpcomingBlockInput.Name = "Preview Upcoming Block";
+        PreviewUpcomingBlockInput.SetYesNo(1);
+        PreviewUpcomingBlockInput.DisplayOrder = dispOrder++;
+
+        PreviewMinutesInput.Name = "Preview Minutes Before Start";
+        PreviewMinutesInput.SetInt(60);
+        PreviewMinutesInput.SetIntLimits(1, 1440);
+        PreviewMinutesInput.DisplayOrder = dispOrder++;
 
         // ===== TZ TICK LABELS =====
         HeaderTzTicks.Name = "===== TZ TICK LABELS =====";
@@ -409,6 +434,32 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             return false;
         return IsTimeInWindow(dt.GetTime(), s, e);
     };
+
+    auto GetNextSessionBounds = [&](double s, double e, const SCDateTime& now, SCDateTime& outStart, SCDateTime& outEnd)
+    {
+        SCDateTime todayStart = now.GetDate() + s;
+        SCDateTime todayEnd   = now.GetDate() + e;
+        if (s > e) todayEnd += 1.0; 
+
+        if (now < todayStart) {
+            outStart = todayStart;
+            outEnd   = todayEnd;
+        } else if (now < todayEnd) {
+            outStart = todayStart;
+            outEnd   = todayEnd;
+        } else {
+            outStart = todayStart + 1.0;
+            outEnd   = todayEnd + 1.0;
+        }
+        
+        for (int i = 0; i < 7; i++) {
+            if (IsDayAllowed(outStart.GetDayOfWeek())) {
+                break;
+            }
+            outStart += 1.0;
+            outEnd   += 1.0;
+        }
+    };
     
     // -------------------- Read Time Markers inputs (used by hash and drawing) --------------------
     const int enableMarkers = EnableMarkersInput.GetYesNo();
@@ -422,6 +473,11 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     const COLORREF markerLabelColor = MarkerLabelColorInput.GetColor();
     const int maxMarkersPerDay = MaxMarkersPerDayInput.GetInt();
     
+    // Projections
+    const int extendActive = ExtendActiveBlockInput.GetYesNo();
+    const int previewUpcoming = PreviewUpcomingBlockInput.GetYesNo();
+    const int previewMinutes = PreviewMinutesInput.GetInt();
+
     // -------------------- Hash Caching: Skip redraw if nothing changed --------------------
     if (enableHashCaching)
     {
@@ -455,6 +511,11 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         currentHash ^= markerLabelFontSize;
         currentHash ^= (int)markerLabelColor;
         currentHash ^= maxMarkersPerDay;
+        
+        // Projections
+        currentHash ^= extendActive;
+        currentHash ^= previewUpcoming;
+        currentHash ^= previewMinutes;
         
         // Simple hash of day filter and labels
         if (dowFilter != NULL)
@@ -573,9 +634,10 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     auto DrawSegment = [&](int segmentIndex, int beginIndex, int endIndex,
                            const SCSubgraphRef& BorderSG, const SCSubgraphRef& FillSG,
                            const char* text,
-                           int rectBase)
+                           int rectBase,
+                           SCDateTime forceBeginDT = 0.0, SCDateTime forceEndDT = 0.0)
     {
-        if (endIndex < beginIndex)
+        if (beginIndex >= 0 && endIndex >= 0 && endIndex < beginIndex)
             return;
 
         const int rectLine = rectBase + 2 * segmentIndex;
@@ -586,8 +648,13 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         R.ChartNumber = sc.ChartNumber;
         R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
         R.Region      = sc.GraphRegion;
-        R.BeginIndex  = beginIndex;
-        R.EndIndex    = endIndex;
+        
+        if (forceBeginDT != 0.0) R.BeginDateTime = forceBeginDT;
+        else R.BeginIndex = beginIndex;
+        
+        if (forceEndDT != 0.0) R.EndDateTime = forceEndDT;
+        else R.EndIndex = endIndex;
+        
         R.UseRelativeVerticalValues = 1;
         R.BeginValue  = boxBegin;
         R.EndValue    = boxEnd;
@@ -605,30 +672,23 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         if (text != NULL && text[0] != '\0')
         {
-            // We want the session header (e.g. "Globex", "RTH") to stay
-            // centered over the *visible* portion of its session, while
-            // never moving outside the actual session bounds.
-            //
-            // Compute the intersection of this segment with the current
-            // visible bar range, and center the label there. If the
-            // segment is completely off-screen, we fall back to the
-            // original full-segment midpoint, which will also be off-screen.
             int effectiveStart = beginIndex;
             int effectiveEnd   = endIndex;
 
-            if (visibleEnd >= visibleStart)
+            if (beginIndex >= 0 && endIndex >= 0)
             {
-                // If there is any overlap between [beginIndex,endIndex]
-                // and [visibleStart,visibleEnd], clamp to that overlap.
-                if (!(endIndex < visibleStart || beginIndex > visibleEnd))
+                if (visibleEnd >= visibleStart)
                 {
-                    if (beginIndex < visibleStart) effectiveStart = visibleStart;
-                    if (endIndex   > visibleEnd)   effectiveEnd   = visibleEnd;
+                    if (!(endIndex < visibleStart || beginIndex > visibleEnd))
+                    {
+                        if (beginIndex < visibleStart) effectiveStart = visibleStart;
+                        if (endIndex   > visibleEnd)   effectiveEnd   = visibleEnd;
+                    }
                 }
-            }
 
-            if (effectiveEnd < effectiveStart)
-                effectiveStart = effectiveEnd = beginIndex + (endIndex - beginIndex) / 2;
+                if (effectiveEnd < effectiveStart)
+                    effectiveStart = effectiveEnd = beginIndex + (endIndex - beginIndex) / 2;
+            }
 
             const int midIndex = effectiveStart + (effectiveEnd - effectiveStart) / 2;
 
@@ -645,30 +705,36 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
 
             int alignInput = TextAlignment.GetInt();
-            int anchorIndex;
+            int anchorIndex = midIndex;
+            SCDateTime anchorDT = 0.0;
             const int padBars = 10;
-
-            switch (alignInput)
+            
+            if (beginIndex < 0) 
             {
-                case 0:
-                    // Left-aligned: pad from the left of the *visible*
-                    // portion, but never outside the true session bounds.
-                    anchorIndex = effectiveStart + padBars;
-                    if (anchorIndex > effectiveEnd)   anchorIndex = effectiveEnd;
-                    if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
-                    if (anchorIndex > endIndex)       anchorIndex = endIndex;
-                    break;
-                case 2:
-                    // Right-aligned: pad from the right of the *visible*
-                    // portion, but never outside the true session bounds.
-                    anchorIndex = effectiveEnd - padBars;
-                    if (anchorIndex < effectiveStart) anchorIndex = effectiveStart;
-                    if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
-                    if (anchorIndex > endIndex)       anchorIndex = endIndex;
-                    break;
-                default:
-                    anchorIndex = midIndex;
-                    break;
+                if (alignInput == 0) anchorDT = forceBeginDT;
+                else if (alignInput == 2) anchorDT = forceEndDT;
+                else anchorDT = forceBeginDT + (forceEndDT - forceBeginDT) / 2.0;
+            }
+            else
+            {
+                switch (alignInput)
+                {
+                    case 0:
+                        anchorIndex = effectiveStart + padBars;
+                        if (anchorIndex > effectiveEnd)   anchorIndex = effectiveEnd;
+                        if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
+                        if (anchorIndex > endIndex)       anchorIndex = endIndex;
+                        break;
+                    case 2:
+                        anchorIndex = effectiveEnd - padBars;
+                        if (anchorIndex < effectiveStart) anchorIndex = effectiveStart;
+                        if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
+                        if (anchorIndex > endIndex)       anchorIndex = endIndex;
+                        break;
+                    default:
+                        anchorIndex = midIndex;
+                        break;
+                }
             }
 
             s_UseTool T;
@@ -676,7 +742,10 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             T.ChartNumber = sc.ChartNumber;
             T.DrawingType = DRAWING_TEXT;
             T.Region      = sc.GraphRegion;
-            T.BeginIndex  = anchorIndex;
+            
+            if (beginIndex < 0) T.BeginDateTime = anchorDT;
+            else T.BeginIndex = anchorIndex;
+            
             T.UseRelativeVerticalValues = 1;
             T.BeginValue  = labelY;
             T.Text        = text;
@@ -718,7 +787,31 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             // Defensive limit to prevent line number overflow
             if (segCountA >= 9999) break;
         }
-        if (inSeg && segCountA < 9999) { DrawSegment(segCountA, segStart, scanEnd, BorderA, FillA, labelA, rectBaseA); segCountA++; }
+        
+        if (inSeg && segCountA < 9999) { 
+            SCDateTime extEndDT = 0.0;
+            if (extendActive && scanEnd == sc.ArraySize - 1) {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startA, endA, sc.BaseDateTimeIn[scanEnd], sDT, eDT);
+                extEndDT = eDT;
+            }
+            DrawSegment(segCountA, segStart, scanEnd, BorderA, FillA, labelA, rectBaseA, 0.0, extEndDT); 
+            segCountA++; 
+        }
+
+        if (previewUpcoming && segCountA < 9999) {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startA, endA, latestDT, sDT, eDT);
+            if (latestDT < sDT) {
+                if (!onlyToday || sDT.GetDate() == latestDate) {
+                    double minsToStart = (sDT - latestDT) * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0) {
+                        DrawSegment(segCountA, -1, -1, BorderA, FillA, labelA, rectBaseA, sDT, eDT);
+                        segCountA++;
+                    }
+                }
+            }
+        }
     }
 
     for (int i = segCountA; i < LastSegCountA; ++i)
@@ -746,7 +839,31 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             // Defensive limit to prevent line number overflow
             if (segCountB >= 9999) break;
         }
-        if (inSeg && segCountB < 9999) { DrawSegment(segCountB, segStart, scanEnd, BorderB, FillB, labelB, rectBaseB); segCountB++; }
+        
+        if (inSeg && segCountB < 9999) { 
+            SCDateTime extEndDT = 0.0;
+            if (extendActive && scanEnd == sc.ArraySize - 1) {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startB, endB, sc.BaseDateTimeIn[scanEnd], sDT, eDT);
+                extEndDT = eDT;
+            }
+            DrawSegment(segCountB, segStart, scanEnd, BorderB, FillB, labelB, rectBaseB, 0.0, extEndDT); 
+            segCountB++; 
+        }
+
+        if (previewUpcoming && segCountB < 9999) {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startB, endB, latestDT, sDT, eDT);
+            if (latestDT < sDT) {
+                if (!onlyToday || sDT.GetDate() == latestDate) {
+                    double minsToStart = (sDT - latestDT) * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0) {
+                        DrawSegment(segCountB, -1, -1, BorderB, FillB, labelB, rectBaseB, sDT, eDT);
+                        segCountB++;
+                    }
+                }
+            }
+        }
     }
 
     for (int i = segCountB; i < LastSegCountB; ++i)
