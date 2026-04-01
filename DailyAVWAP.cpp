@@ -26,6 +26,11 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 	SCInputRef Input_StdDev3Mult = sc.Input[5];
 	SCInputRef Input_StdDev4Mult = sc.Input[6];
 	SCInputRef Input_StdDev5Mult = sc.Input[7];
+	SCInputRef Input_EnableBand1 = sc.Input[8];
+	SCInputRef Input_EnableBand2 = sc.Input[9];
+	SCInputRef Input_EnableBand3 = sc.Input[10];
+	SCInputRef Input_EnableBand4 = sc.Input[11];
+	SCInputRef Input_EnableBand5 = sc.Input[12];
 
 	if (sc.SetDefaults)
 	{
@@ -44,43 +49,53 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 		Subgraph_VWAP.DrawZeros = false;
 		
 		Subgraph_StdDev1Pos.Name = "STD +1";
-		Subgraph_StdDev1Pos.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev1Pos.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev1Pos.DrawZeros = false;
 		Subgraph_StdDev1Pos.PrimaryColor = RGB(0, 255, 0);
 		
 		Subgraph_StdDev1Neg.Name = "STD -1";
-		Subgraph_StdDev1Neg.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev1Neg.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev1Neg.DrawZeros = false;
 		Subgraph_StdDev1Neg.PrimaryColor = RGB(255, 0, 0);
 
 		Subgraph_StdDev2Pos.Name = "STD +2";
-		Subgraph_StdDev2Pos.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev2Pos.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev2Pos.DrawZeros = false;
 		Subgraph_StdDev2Pos.PrimaryColor = RGB(0, 255, 0);
 		
 		Subgraph_StdDev2Neg.Name = "STD -2";
-		Subgraph_StdDev2Neg.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev2Neg.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev2Neg.DrawZeros = false;
 		Subgraph_StdDev2Neg.PrimaryColor = RGB(255, 0, 0);
 
 		Subgraph_StdDev3Pos.Name = "STD +3";
-		Subgraph_StdDev3Pos.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev3Pos.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev3Pos.DrawZeros = false;
 		Subgraph_StdDev3Pos.PrimaryColor = RGB(0, 255, 0);
 		
 		Subgraph_StdDev3Neg.Name = "STD -3";
-		Subgraph_StdDev3Neg.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev3Neg.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev3Neg.DrawZeros = false;
 		Subgraph_StdDev3Neg.PrimaryColor = RGB(255, 0, 0);
 
 		Subgraph_StdDev4Pos.Name = "STD +4";
-		Subgraph_StdDev4Pos.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev4Pos.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev4Pos.DrawZeros = false;
 		Subgraph_StdDev4Pos.PrimaryColor = RGB(0, 255, 0);
 		
 		Subgraph_StdDev4Neg.Name = "STD -4";
-		Subgraph_StdDev4Neg.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev4Neg.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev4Neg.DrawZeros = false;
 		Subgraph_StdDev4Neg.PrimaryColor = RGB(255, 0, 0);
 
 		Subgraph_StdDev5Pos.Name = "STD +5";
-		Subgraph_StdDev5Pos.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev5Pos.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev5Pos.DrawZeros = false;
 		Subgraph_StdDev5Pos.PrimaryColor = RGB(0, 255, 0);
 		
 		Subgraph_StdDev5Neg.Name = "STD -5";
-		Subgraph_StdDev5Neg.DrawStyle = DRAWSTYLE_IGNORE; 
+		Subgraph_StdDev5Neg.DrawStyle = DRAWSTYLE_LINE; 
+		Subgraph_StdDev5Neg.DrawZeros = false;
 		Subgraph_StdDev5Neg.PrimaryColor = RGB(255, 0, 0);
 
 		Input_ResetTime.Name = "Daily Reset Time";
@@ -93,19 +108,34 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 		Input_AlertMessage.SetString("Daily AVWAP Crossover");
 		
 		Input_StdDev1Mult.Name = "StdDev Band 1 Multiplier";
-		Input_StdDev1Mult.SetFloat(1.0f);
+		Input_StdDev1Mult.SetFloat(0.5f);
 		
 		Input_StdDev2Mult.Name = "StdDev Band 2 Multiplier";
-		Input_StdDev2Mult.SetFloat(2.0f);
+		Input_StdDev2Mult.SetFloat(1.0f);
 		
 		Input_StdDev3Mult.Name = "StdDev Band 3 Multiplier";
-		Input_StdDev3Mult.SetFloat(3.0f);
+		Input_StdDev3Mult.SetFloat(1.5f);
 
 		Input_StdDev4Mult.Name = "StdDev Band 4 Multiplier";
-		Input_StdDev4Mult.SetFloat(4.0f);
+		Input_StdDev4Mult.SetFloat(2.0f);
 
 		Input_StdDev5Mult.Name = "StdDev Band 5 Multiplier";
-		Input_StdDev5Mult.SetFloat(5.0f);
+		Input_StdDev5Mult.SetFloat(2.5f);
+
+		Input_EnableBand1.Name = "Enable Band 1 (+/-)";
+		Input_EnableBand1.SetYesNo(0);
+
+		Input_EnableBand2.Name = "Enable Band 2 (+/-)";
+		Input_EnableBand2.SetYesNo(0);
+
+		Input_EnableBand3.Name = "Enable Band 3 (+/-)";
+		Input_EnableBand3.SetYesNo(0);
+
+		Input_EnableBand4.Name = "Enable Band 4 (+/-)";
+		Input_EnableBand4.SetYesNo(0);
+
+		Input_EnableBand5.Name = "Enable Band 5 (+/-)";
+		Input_EnableBand5.SetYesNo(0);
 
 		return;
 	}
@@ -118,6 +148,12 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 	float StdDev3Mult = Input_StdDev3Mult.GetFloat();
 	float StdDev4Mult = Input_StdDev4Mult.GetFloat();
 	float StdDev5Mult = Input_StdDev5Mult.GetFloat();
+
+	bool EnableBand1 = Input_EnableBand1.GetYesNo();
+	bool EnableBand2 = Input_EnableBand2.GetYesNo();
+	bool EnableBand3 = Input_EnableBand3.GetYesNo();
+	bool EnableBand4 = Input_EnableBand4.GetYesNo();
+	bool EnableBand5 = Input_EnableBand5.GetYesNo();
 
 	int& LastAlertBarIndex = sc.GetPersistentInt(1);
 
@@ -220,16 +256,16 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 			if (Variance < 0.0) Variance = 0.0;
 			double StdDev = sqrt(Variance);
 			
-			Subgraph_StdDev1Pos[i] = (float)(VWAP + (StdDev1Mult * StdDev));
-			Subgraph_StdDev1Neg[i] = (float)(VWAP - (StdDev1Mult * StdDev));
-			Subgraph_StdDev2Pos[i] = (float)(VWAP + (StdDev2Mult * StdDev));
-			Subgraph_StdDev2Neg[i] = (float)(VWAP - (StdDev2Mult * StdDev));
-			Subgraph_StdDev3Pos[i] = (float)(VWAP + (StdDev3Mult * StdDev));
-			Subgraph_StdDev3Neg[i] = (float)(VWAP - (StdDev3Mult * StdDev));
-			Subgraph_StdDev4Pos[i] = (float)(VWAP + (StdDev4Mult * StdDev));
-			Subgraph_StdDev4Neg[i] = (float)(VWAP - (StdDev4Mult * StdDev));
-			Subgraph_StdDev5Pos[i] = (float)(VWAP + (StdDev5Mult * StdDev));
-			Subgraph_StdDev5Neg[i] = (float)(VWAP - (StdDev5Mult * StdDev));
+			Subgraph_StdDev1Pos[i] = EnableBand1 ? (float)(VWAP + (StdDev1Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev1Neg[i] = EnableBand1 ? (float)(VWAP - (StdDev1Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev2Pos[i] = EnableBand2 ? (float)(VWAP + (StdDev2Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev2Neg[i] = EnableBand2 ? (float)(VWAP - (StdDev2Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev3Pos[i] = EnableBand3 ? (float)(VWAP + (StdDev3Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev3Neg[i] = EnableBand3 ? (float)(VWAP - (StdDev3Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev4Pos[i] = EnableBand4 ? (float)(VWAP + (StdDev4Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev4Neg[i] = EnableBand4 ? (float)(VWAP - (StdDev4Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev5Pos[i] = EnableBand5 ? (float)(VWAP + (StdDev5Mult * StdDev)) : 0.0f;
+			Subgraph_StdDev5Neg[i] = EnableBand5 ? (float)(VWAP - (StdDev5Mult * StdDev)) : 0.0f;
 			
 			// Alert Logic - Updated for 11 subgraphs (VWAP + 5 pairs)
 			if (i == sc.ArraySize - 1 && i > 0 && AlertSoundIdx > 0 && i != LastAlertBarIndex)
@@ -239,7 +275,7 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 				
 				for (int k = 0; k < 11; k++)
 				{
-					if (sc.Subgraph[k].DrawStyle == DRAWSTYLE_IGNORE)
+					if (sc.Subgraph[k].DrawStyle == DRAWSTYLE_IGNORE || sc.Subgraph[k][i] == 0.0f)
 						continue;
 					
 					float LineCurr = sc.Subgraph[k][i];
@@ -262,16 +298,16 @@ SCSFExport scsf_DailyAVWAP(SCStudyInterfaceRef sc)
 			if (i > 0)
 			{
 				Subgraph_VWAP[i] = Subgraph_VWAP[i - 1]; 
-				Subgraph_StdDev1Pos[i] = Subgraph_StdDev1Pos[i - 1];
-				Subgraph_StdDev1Neg[i] = Subgraph_StdDev1Neg[i - 1];
-				Subgraph_StdDev2Pos[i] = Subgraph_StdDev2Pos[i - 1];
-				Subgraph_StdDev2Neg[i] = Subgraph_StdDev2Neg[i - 1];
-				Subgraph_StdDev3Pos[i] = Subgraph_StdDev3Pos[i - 1];
-				Subgraph_StdDev3Neg[i] = Subgraph_StdDev3Neg[i - 1];
-				Subgraph_StdDev4Pos[i] = Subgraph_StdDev4Pos[i - 1];
-				Subgraph_StdDev4Neg[i] = Subgraph_StdDev4Neg[i - 1];
-				Subgraph_StdDev5Pos[i] = Subgraph_StdDev5Pos[i - 1];
-				Subgraph_StdDev5Neg[i] = Subgraph_StdDev5Neg[i - 1];
+				Subgraph_StdDev1Pos[i] = EnableBand1 ? Subgraph_StdDev1Pos[i - 1] : 0.0f;
+				Subgraph_StdDev1Neg[i] = EnableBand1 ? Subgraph_StdDev1Neg[i - 1] : 0.0f;
+				Subgraph_StdDev2Pos[i] = EnableBand2 ? Subgraph_StdDev2Pos[i - 1] : 0.0f;
+				Subgraph_StdDev2Neg[i] = EnableBand2 ? Subgraph_StdDev2Neg[i - 1] : 0.0f;
+				Subgraph_StdDev3Pos[i] = EnableBand3 ? Subgraph_StdDev3Pos[i - 1] : 0.0f;
+				Subgraph_StdDev3Neg[i] = EnableBand3 ? Subgraph_StdDev3Neg[i - 1] : 0.0f;
+				Subgraph_StdDev4Pos[i] = EnableBand4 ? Subgraph_StdDev4Pos[i - 1] : 0.0f;
+				Subgraph_StdDev4Neg[i] = EnableBand4 ? Subgraph_StdDev4Neg[i - 1] : 0.0f;
+				Subgraph_StdDev5Pos[i] = EnableBand5 ? Subgraph_StdDev5Pos[i - 1] : 0.0f;
+				Subgraph_StdDev5Neg[i] = EnableBand5 ? Subgraph_StdDev5Neg[i - 1] : 0.0f;
 			}
 		}
 	}
