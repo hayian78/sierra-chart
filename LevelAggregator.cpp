@@ -166,11 +166,14 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
             Text.LineNumber = labelID;
             Text.DrawingType = DRAWING_TEXT;
             
-            SCString labelStr;
+            SCString baseName;
             if (level.Description.GetLength() > 0)
-                labelStr = level.Description;
+                baseName = level.Description;
             else
-                labelStr = level.Label;
+                baseName = level.Label;
+            
+            SCString labelStr;
+            labelStr.Format("%s (%s)", baseName.GetChars(), level.ChartName.GetChars());
 
             Text.Text = labelStr;
             Text.BeginValue = level.Price;
@@ -396,12 +399,12 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         IN_HDR_CORE = 0,
         IN_BUTTON_NUM,
         IN_BUTTON_TEXT,
+        IN_DISPLAY_MODE,
         IN_LABEL_FILTERS,
         IN_CHART_CONFIG,
         
-        // Display Settings  
-        IN_HDR_DISPLAY,
-        IN_SHOW_TABLE,
+        // Table Settings  
+        IN_HDR_TABLE,
         IN_TABLE_X,
         IN_TABLE_Y,
         IN_TABLE_RANGE_LEVELS,
@@ -427,12 +430,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         
         // Chart Line Settings
         IN_HDR_LINE_SETTINGS,
-        IN_SHOW_LINES,
         IN_LINE_STYLE,
         IN_LINE_WIDTH,
         IN_LINE_COLOR,
         IN_SHOW_LINE_LABELS,
-        IN_LINE_DRAWING_MODE,
         IN_SHORT_LINE_BARS
     };
     
@@ -451,9 +452,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
             "Highlighted rows show nearest levels above/below current price.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
-        // Update on every chart redraw (scroll/zoom) so the table
-        // tracks the viewport smoothly. The study keeps CPU usage low
-        // by only redrawing when something actually changes.
         sc.UpdateAlways = 1;
         
         int order = 1;
@@ -472,6 +470,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_BUTTON_TEXT].Name = "Button Text";
         sc.Input[IN_BUTTON_TEXT].SetString("Levels");
         sc.Input[IN_BUTTON_TEXT].DisplayOrder = order++;
+
+        sc.Input[IN_DISPLAY_MODE].Name = "Display Mode";
+        sc.Input[IN_DISPLAY_MODE].SetCustomInputStrings("Table Only;Table + Short Lines;Table + Full Lines;Short Lines Only;Full Lines Only");
+        sc.Input[IN_DISPLAY_MODE].SetCustomInputIndex(1);
+        sc.Input[IN_DISPLAY_MODE].DisplayOrder = order++;
         
         sc.Input[IN_LABEL_FILTERS].Name = "Target Labels (comma-separated, |All for all instances)";
         sc.Input[IN_LABEL_FILTERS].SetString(">>|All");
@@ -481,15 +484,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_CHART_CONFIG].SetString("1|TPO,9|1 MIN,3|Daily TPO,5|Weekly,13|30 MIN,8|4 HR");
         sc.Input[IN_CHART_CONFIG].DisplayOrder = order++;
         
-        // ===== DISPLAY SETTINGS =====
-        sc.Input[IN_HDR_DISPLAY].Name = "===== DISPLAY SETTINGS =====";
-        sc.Input[IN_HDR_DISPLAY].SetInt(0);
-        sc.Input[IN_HDR_DISPLAY].SetIntLimits(0, 0);
-        sc.Input[IN_HDR_DISPLAY].DisplayOrder = order++;
-        
-        sc.Input[IN_SHOW_TABLE].Name = "Show Table on Chart";
-        sc.Input[IN_SHOW_TABLE].SetYesNo(1);
-        sc.Input[IN_SHOW_TABLE].DisplayOrder = order++;
+        // ===== TABLE SETTINGS =====
+        sc.Input[IN_HDR_TABLE].Name = "===== TABLE SETTINGS =====";
+        sc.Input[IN_HDR_TABLE].SetInt(0);
+        sc.Input[IN_HDR_TABLE].SetIntLimits(0, 0);
+        sc.Input[IN_HDR_TABLE].DisplayOrder = order++;
 
         sc.Input[IN_TABLE_X].Name = "Table X Position (Pixels)";
         sc.Input[IN_TABLE_X].SetInt(20);
@@ -499,7 +498,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_TABLE_Y].SetInt(60);
         sc.Input[IN_TABLE_Y].DisplayOrder = order++;
 
-        sc.Input[IN_TABLE_RANGE_LEVELS].Name = "Max Levels Above/Below Current (0 = All)";
+        sc.Input[IN_TABLE_RANGE_LEVELS].Name = "Max Table Levels Above/Below Current (0 = All)";
         sc.Input[IN_TABLE_RANGE_LEVELS].SetInt(0);
         sc.Input[IN_TABLE_RANGE_LEVELS].SetIntLimits(0, 1000);
         sc.Input[IN_TABLE_RANGE_LEVELS].DisplayOrder = order++;
@@ -526,10 +525,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_HDR_LINE_SETTINGS].SetIntLimits(0, 0);
         sc.Input[IN_HDR_LINE_SETTINGS].DisplayOrder = order++;
 
-        sc.Input[IN_SHOW_LINES].Name = "Show Lines on Chart";
-        sc.Input[IN_SHOW_LINES].SetYesNo(0);
-        sc.Input[IN_SHOW_LINES].DisplayOrder = order++;
-
         sc.Input[IN_LINE_STYLE].Name = "Line Style";
         sc.Input[IN_LINE_STYLE].SetCustomInputStrings("Solid;Dash;Dot;DashDot;DashDotDot");
         sc.Input[IN_LINE_STYLE].SetCustomInputIndex(0);
@@ -547,11 +542,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_SHOW_LINE_LABELS].Name = "Show Labels on Lines";
         sc.Input[IN_SHOW_LINE_LABELS].SetYesNo(1);
         sc.Input[IN_SHOW_LINE_LABELS].DisplayOrder = order++;
-
-        sc.Input[IN_LINE_DRAWING_MODE].Name = "Line Drawing Mode";
-        sc.Input[IN_LINE_DRAWING_MODE].SetCustomInputStrings("Full Chart Width;Right Edge Only (Short Line)");
-        sc.Input[IN_LINE_DRAWING_MODE].SetCustomInputIndex(0);
-        sc.Input[IN_LINE_DRAWING_MODE].DisplayOrder = order++;
 
         sc.Input[IN_SHORT_LINE_BARS].Name = "Short Line Length (Bars)";
         sc.Input[IN_SHORT_LINE_BARS].SetInt(20);
@@ -612,12 +602,12 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         return;
     }
     
-    // Get input references using enum
     SCInputRef Input_ButtonNum = sc.Input[IN_BUTTON_NUM];
     SCInputRef Input_ButtonText = sc.Input[IN_BUTTON_TEXT];
+    SCInputRef Input_DisplayMode = sc.Input[IN_DISPLAY_MODE];
     SCInputRef Input_LabelFilters = sc.Input[IN_LABEL_FILTERS];
     SCInputRef Input_ChartConfig = sc.Input[IN_CHART_CONFIG];
-    SCInputRef Input_ShowTable = sc.Input[IN_SHOW_TABLE];
+    
     SCInputRef Input_TableX = sc.Input[IN_TABLE_X];
     SCInputRef Input_TableY = sc.Input[IN_TABLE_Y];
     SCInputRef Input_TableRangeLevels = sc.Input[IN_TABLE_RANGE_LEVELS];
@@ -625,8 +615,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     SCInputRef Input_FontColor = sc.Input[IN_FONT_COLOR];
     SCInputRef Input_BgColor = sc.Input[IN_BG_COLOR];
     SCInputRef Input_HighlightColor = sc.Input[IN_HIGHLIGHT_COLOR];
+    
     SCInputRef Input_SortBy1 = sc.Input[IN_SORT_BY_1];
     SCInputRef Input_SortBy2 = sc.Input[IN_SORT_BY_2];
+    
     SCInputRef Input_ExportOnScan = sc.Input[IN_EXPORT_ON_SCAN];
     SCInputRef Input_OutputDest = sc.Input[IN_OUTPUT_DEST];
     SCInputRef Input_FilePath = sc.Input[IN_FILE_PATH];
@@ -635,13 +627,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     SCInputRef Input_IncludeChartName = sc.Input[IN_INCLUDE_CHART_NAME];
     SCInputRef Input_IncludeDesc = sc.Input[IN_INCLUDE_DESCRIPTION];
     
-    // Line settings
-    SCInputRef Input_ShowLines = sc.Input[IN_SHOW_LINES];
     SCInputRef Input_LineStyle = sc.Input[IN_LINE_STYLE];
     SCInputRef Input_LineWidth = sc.Input[IN_LINE_WIDTH];
     SCInputRef Input_LineColor = sc.Input[IN_LINE_COLOR];
     SCInputRef Input_ShowLineLabels = sc.Input[IN_SHOW_LINE_LABELS];
-    SCInputRef Input_LineDrawingMode = sc.Input[IN_LINE_DRAWING_MODE];
     SCInputRef Input_ShortLineBars = sc.Input[IN_SHORT_LINE_BARS];
     
     // Manage persistent state
@@ -653,11 +642,9 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     }
     
     // Button handling - TIME-BASED DEBOUNCE approach
-    // Static variables survive study recalculations better than persistent pointers
     static SCDateTime s_LastToggleTime = 0;
     static int s_StudyID = -1;
     
-    // Reset static state if study ID changed (different study instance)
     if (s_StudyID != sc.StudyGraphInstanceID)
     {
         s_StudyID = sc.StudyGraphInstanceID;
@@ -670,7 +657,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     
     bool runScan = false;
     
-    // Time-based debounce: only allow toggle if 500ms has passed since last toggle
     SCDateTime now = sc.CurrentSystemDateTime;
     double elapsedSeconds = 999.0;
     if (now.IsDateSet() && s_LastToggleTime.IsDateSet())
@@ -681,7 +667,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     
     if (buttonState == 1 && elapsedSeconds > 0.5)
     {
-        // Toggle visibility
         p_State->IsTableVisible = !p_State->IsTableVisible;
         s_LastToggleTime = now;
         
@@ -692,21 +677,24 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         }
         else
         {
-            // Immediately hide the table
+            // Table cleanup
             sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765432);
             sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765433);
             p_State->LastHighIdx = -1;
             p_State->LastLowIdx = -1;
             p_State->LastPrice = 0;
         }
-        
-        // Reset button
         sc.SetCustomStudyControlBarButtonEnable(buttonNum, 0);
     }
     
-    // Detect scroll/zoom changes so the table position keeps up with
-    // the chart as you pan. We only force a redraw when the first
-    // visible bar actually moves.
+    // Determine visibility and modes from dropdown
+    // 0: "Table Only", 1: "Table + Short Lines", 2: "Table + Full Lines", 3: "Short Lines Only", 4: "Full Lines Only"
+    int displayMode = Input_DisplayMode.GetIndex();
+    bool modeShowTable = (displayMode <= 2);
+    bool modeShowLines = (displayMode >= 1);
+    int modeLineType = (displayMode == 2 || displayMode == 4) ? 0 : 1; // 0=Full, 1=Short
+
+    // Detect scroll/zoom changes for table tracking
     int currentFirstVisible = sc.IndexOfFirstVisibleBar;
     if (p_State->IsTableVisible && currentFirstVisible != p_State->LastFirstVisibleBar)
     {
@@ -714,11 +702,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         p_State->ForceRedraw = true;
     }
     
-    // Draw table (respects change detection)
-    bool showTable = Input_ShowTable.GetYesNo() && p_State->IsTableVisible;
-    bool showLines = Input_ShowLines.GetYesNo();
+    // Final visibility flags based on global toggle and display mode settings
+    bool showTable = modeShowTable && p_State->IsTableVisible;
+    bool showLines = modeShowLines && p_State->IsTableVisible;
     bool forceRedraw = p_State->ForceRedraw;
-    // Note: p_State->ForceRedraw is reset at the end of scan logic or here if no scan
     
     DrawTable(sc, p_State, showTable, Input_TableX.GetInt(), Input_TableY.GetInt(),
               Input_FontSize.GetInt(), Input_FontColor.GetColor(), 
@@ -727,7 +714,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
 
     DrawLines(sc, p_State, showLines, Input_LineStyle.GetIndex(), Input_LineWidth.GetInt(),
               Input_LineColor.GetColor(), Input_ShowLineLabels.GetYesNo(),
-              Input_LineDrawingMode.GetIndex(), Input_ShortLineBars.GetInt(), forceRedraw);
+              modeLineType, Input_ShortLineBars.GetInt(), forceRedraw);
 
     if (!runScan && !p_State->ForceRedraw)
     {
