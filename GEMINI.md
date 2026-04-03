@@ -45,3 +45,9 @@ When modifying or expanding these studies, adhere to the following principles:
 - Ensure adaptive logic aligns dynamically with the "Point in Time" capabilities when testing execution paths.
 - Stop-before-target execution and conservative stop bounds are actively factored into momentum/reversal signaling.
 - Maintain accurate alignment visually with internal Sierra Chart equivalents (like built-in VWAP) for continuous UX cohesion.
+
+## 🚀 Deployment Protocol (Mandate)
+
+1.  **Batched Work**: Do NOT commit or push after every request. Perform all requested modifications, bug fixes, and documentation updates first.
+2.  **Explicit Trigger**: Only initiate the `git commit` and `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy".
+3.  **Validation**: Ensure all remote builds pass (if build output was provided) before deployment.
