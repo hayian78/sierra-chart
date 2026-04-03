@@ -957,12 +957,19 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     p_State->LastLowIdx = -1;
     p_State->ForceRedraw = true;
     
-    // Force immediate table draw
-    showTable = Input_ShowTable.GetYesNo() && p_State->IsTableVisible;
+    // Force immediate draw based on current visibility state
+    showTable = modeShowTable && p_State->IsTableVisible;
+    showLines = modeShowLines && p_State->IsTableVisible;
+
     DrawTable(sc, p_State, showTable, Input_TableX.GetInt(), Input_TableY.GetInt(),
               Input_FontSize.GetInt(), Input_FontColor.GetColor(), 
               Input_BgColor.GetColor(), Input_HighlightColor.GetColor(),
               Input_TableRangeLevels.GetInt(), true);
+
+    DrawLines(sc, p_State, showLines, Input_LineStyle.GetIndex(), Input_LineWidth.GetInt(),
+              Input_LineColor.GetColor(), Input_ShowLineLabels.GetYesNo(),
+              modeLineType, Input_ShortLineBars.GetInt(), true);
+
     p_State->ForceRedraw = false;
 
     // Log summary
