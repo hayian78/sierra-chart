@@ -3,21 +3,16 @@
 When this file is referenced, Gemini CLI must perform the following deployment workflow:
 
 ### 1. Pre-Flight Check
-- Run `git status` to identify all modified and untracked files.
-- Run `git diff HEAD` to review all pending changes.
-- Review `git log -n 5` to maintain consistency with previous commit styles (e.g., Conventional Commits).
+- Run `git status` to identify any uncommitted changes.
+- Run `git log origin/main..HEAD` to review all local commits that will be pushed.
+- Confirm all remote builds associated with these commits have passed.
 
-### 2. Staging
-- Stage all relevant files (`git add .` or specific files as appropriate).
-- Exclude transient log files (e.g., `log.txt`, `log2.txt`).
+### 2. Final Staging (If needed)
+- Ensure all final tweaks are committed locally.
 
-### 3. Committing
-- Draft a concise, high-signal commit message following the project's style.
-- Summarize the "Why" and "What" of the batched changes.
-
-### 4. Pushing
-- Execute `git push` to the remote repository.
-- Confirm successful completion with a final status check.
+### 3. Pushing
+- Execute `git push origin main` to synchronize the local history with the remote.
+- Confirm successful completion with a final `git status`.
 
 ---
 **Status**: Ready to ship when you are.

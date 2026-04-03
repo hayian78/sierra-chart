@@ -48,6 +48,7 @@ When modifying or expanding these studies, adhere to the following principles:
 
 ## 🚀 Deployment Protocol (Mandate)
 
-1.  **Batched Work**: Do NOT commit or push after every request. Perform all requested modifications, bug fixes, and documentation updates first.
-2.  **Explicit Trigger**: Only initiate the `git commit` and `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy".
-3.  **Validation**: Ensure all remote builds pass (if build output was provided) before deployment.
+1.  **Granular Local Commits**: Perform a local `git commit` after every logical piece of work or successful modification. This ensures a clean history for rollbacks.
+2.  **Push Seldom**: Do NOT `git push` after every request. Pushing to the remote should only happen in batches.
+3.  **Explicit Push Trigger**: Only initiate the `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy".
+4.  **Validation**: Ensure all remote builds pass (if build output was provided) before any commit or push.
