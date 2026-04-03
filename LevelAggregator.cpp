@@ -87,6 +87,44 @@ void CalculateHighlights(const std::vector<LevelEntry>& levels, double currentPr
     }
 }
 
+void DrawHUD(SCStudyInterfaceRef sc, bool active, const SCString& prefix, int xPos, int yPos, int fontSize, COLORREF color)
+{
+    const int hudLineID = 98765431;
+    if (!active)
+    {
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, hudLineID);
+        return;
+    }
+
+    s_UseTool Tool;
+    Tool.Clear();
+    Tool.ChartNumber = sc.ChartNumber;
+    Tool.LineNumber = hudLineID;
+    Tool.DrawingType = DRAWING_TEXT;
+    Tool.UseRelativeVerticalValues = 1;
+
+    // Table positioning logic adapted for HUD
+    int xOffsetBars = xPos / 12;
+    if (xOffsetBars < 0) xOffsetBars = 0;
+    int startBar = sc.IndexOfFirstVisibleBar + xOffsetBars;
+    if (startBar >= sc.ArraySize) startBar = sc.ArraySize - 1;
+    if (startBar < 0) startBar = 0;
+    Tool.BeginDateTime = sc.BaseDateTimeIn[startBar];
+
+    // HUD sits slightly above the table
+    double yPercent = (double)(yPos - 20) / 10.0; 
+    Tool.BeginValue = 100.0 - yPercent;
+    if (Tool.BeginValue > 99) Tool.BeginValue = 99;
+    
+    Tool.Text.Format("%s ON", prefix.GetChars());
+    Tool.Color = color;
+    Tool.FontSize = fontSize;
+    Tool.FontBold = 1;
+    Tool.TransparentLabelBackground = 1;
+    Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+    sc.UseTool(Tool);
+}
+
 void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines, 
                int lineStyle, int lineWidth, COLORREF lineColor, bool showLabels,
                int drawingMode, int shortLineBars, bool forceRedraw)
@@ -405,6 +443,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         IN_LINE_BUTTON_TEXT,
         IN_LINE_TYPE,
         IN_DISPLAY_MODE,
+        IN_HUD_PREFIX,
         IN_LABEL_FILTERS,
         IN_CHART_CONFIG,
         
@@ -494,6 +533,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_DISPLAY_MODE].SetCustomInputStrings("Table Only;Table + Short Lines;Table + Full Lines;Short Lines Only;Full Lines Only");
         sc.Input[IN_DISPLAY_MODE].SetCustomInputIndex(1);
         sc.Input[IN_DISPLAY_MODE].DisplayOrder = order++;
+
+        sc.Input[IN_HUD_PREFIX].Name = "HUD Status Prefix";
+        sc.Input[IN_HUD_PREFIX].SetString("Level Aggregator:");
+        sc.Input[IN_HUD_PREFIX].DisplayOrder = order++;
         
         sc.Input[IN_LABEL_FILTERS].Name = "Target Labels (comma-separated, |All for all instances)";
         sc.Input[IN_LABEL_FILTERS].SetString(">>|All");
@@ -514,7 +557,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_TABLE_X].DisplayOrder = order++;
 
         sc.Input[IN_TABLE_Y].Name = "Table Y Position (Pixels)";
-        sc.Input[IN_TABLE_Y].SetInt(60);
+        sc.Input[IN_TABLE_Y].SetInt(80);
         sc.Input[IN_TABLE_Y].DisplayOrder = order++;
 
         sc.Input[IN_TABLE_RANGE_LEVELS].Name = "Max Table Levels Above/Below Current (0 = All)";
@@ -627,6 +670,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     SCInputRef Input_LineBtnText = sc.Input[IN_LINE_BUTTON_TEXT];
     SCInputRef Input_LineType = sc.Input[IN_LINE_TYPE];
     SCInputRef Input_DisplayMode = sc.Input[IN_DISPLAY_MODE];
+    SCInputRef Input_HUDPrefix = sc.Input[IN_HUD_PREFIX];
     SCInputRef Input_LabelFilters = sc.Input[IN_LABEL_FILTERS];
     SCInputRef Input_ChartConfig = sc.Input[IN_CHART_CONFIG];
     
@@ -711,8 +755,8 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
                 if (p_State->IsTableVisible) runScan = true;
                 p_State->ForceRedraw = true;
             }
-            sc.SetCustomStudyControlBarButtonEnable(tableBtn, 0);
         }
+        sc.SetCustomStudyControlBarButtonEnable(tableBtn, p_State->IsTableVisible ? 1 : 0);
     }
 
     // Handle Line Button
@@ -730,8 +774,8 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
                 if (p_State->AreLinesVisible) runScan = true;
                 p_State->ForceRedraw = true;
             }
-            sc.SetCustomStudyControlBarButtonEnable(lineBtn, 0);
         }
+        sc.SetCustomStudyControlBarButtonEnable(lineBtn, p_State->AreLinesVisible ? 1 : 0);
     }
 
     // Fallback logic if both buttons are 0
@@ -774,6 +818,9 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     DrawLines(sc, p_State, showLines, Input_LineStyle.GetIndex(), Input_LineWidth.GetInt(),
               Input_LineColor.GetColor(), Input_ShowLineLabels.GetYesNo(),
               modeLineType, Input_ShortLineBars.GetInt(), forceRedraw);
+
+    DrawHUD(sc, (p_State->IsTableVisible || p_State->AreLinesVisible), Input_HUDPrefix.GetString(),
+            Input_TableX.GetInt(), Input_TableY.GetInt(), Input_FontSize.GetInt(), Input_FontColor.GetColor());
 
     if (!runScan && !p_State->ForceRedraw)
     {
