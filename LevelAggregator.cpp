@@ -829,7 +829,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
               Input_LineColor.GetColor(), Input_ShowLineLabels.GetYesNo(),
               modeLineType, Input_ShortLineBars.GetInt(), forceRedraw);
 
-    DrawHUD(sc, (p_State->IsTableVisible || p_State->AreLinesVisible), Input_HUDPrefix.GetString(),
+    DrawHUD(sc, p_State->AreLinesVisible, Input_HUDPrefix.GetString(),
             Input_TableX.GetInt(), Input_TableY.GetInt(), Input_FontSize.GetInt(), Input_FontColor.GetColor());
 
     if (!runScan && !p_State->ForceRedraw)
