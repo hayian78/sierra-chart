@@ -745,18 +745,23 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     if (tableBtn > 0)
     {
         sc.SetCustomStudyControlBarButtonText(tableBtn, Input_TableBtnText.GetString());
-        if (sc.GetCustomStudyControlBarButtonEnableState(tableBtn) == 1)
+        int currentBtnState = sc.GetCustomStudyControlBarButtonEnableState(tableBtn);
+        if (currentBtnState != (p_State->IsTableVisible ? 1 : 0))
         {
             double elapsed = (now.GetAsDouble() - s_LastTableToggle.GetAsDouble()) * 86400.0;
             if (elapsed > 0.5)
             {
-                p_State->IsTableVisible = !p_State->IsTableVisible;
+                p_State->IsTableVisible = (currentBtnState == 1);
                 s_LastTableToggle = now;
                 if (p_State->IsTableVisible) runScan = true;
                 p_State->ForceRedraw = true;
             }
+            else
+            {
+                // Revert button UI if debouncing
+                sc.SetCustomStudyControlBarButtonEnable(tableBtn, p_State->IsTableVisible ? 1 : 0);
+            }
         }
-        sc.SetCustomStudyControlBarButtonEnable(tableBtn, p_State->IsTableVisible ? 1 : 0);
     }
 
     // Handle Line Button
@@ -764,18 +769,23 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     if (lineBtn > 0)
     {
         sc.SetCustomStudyControlBarButtonText(lineBtn, Input_LineBtnText.GetString());
-        if (sc.GetCustomStudyControlBarButtonEnableState(lineBtn) == 1)
+        int currentBtnState = sc.GetCustomStudyControlBarButtonEnableState(lineBtn);
+        if (currentBtnState != (p_State->AreLinesVisible ? 1 : 0))
         {
             double elapsed = (now.GetAsDouble() - s_LastLineToggle.GetAsDouble()) * 86400.0;
             if (elapsed > 0.5)
             {
-                p_State->AreLinesVisible = !p_State->AreLinesVisible;
+                p_State->AreLinesVisible = (currentBtnState == 1);
                 s_LastLineToggle = now;
                 if (p_State->AreLinesVisible) runScan = true;
                 p_State->ForceRedraw = true;
             }
+            else
+            {
+                // Revert button UI if debouncing
+                sc.SetCustomStudyControlBarButtonEnable(lineBtn, p_State->AreLinesVisible ? 1 : 0);
+            }
         }
-        sc.SetCustomStudyControlBarButtonEnable(lineBtn, p_State->AreLinesVisible ? 1 : 0);
     }
 
     // Fallback logic if both buttons are 0
