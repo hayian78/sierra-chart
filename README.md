@@ -23,8 +23,10 @@ A collection of high-performance, custom ACSIL (Advanced Custom Study Interface 
 - **Intent**: Consolidates essential structural levels from multiple charts and timeframes into a single on-chart HUD.
 - **Features**:
   - Scans across specified charts using naming conventions (`LABEL|Description`).
-  - Automatic price proximity sorting: highlights the nearest liquidity/structure above and below current price.
-  - Real-time cross-chart data retrieval.
+  - **Dynamic Visualization**: Multiple display modes including on-chart HUD table, short edge lines, and full horizontal lines.
+  - **Auto-Sync Labels**: Line labels automatically include source chart and description (e.g., `Description (Chart)`).
+  - **Control Bar Integration**: Single-button toggle for all visual elements.
+- **Detailed Guide**: [Level Aggregator Guide](LevelAggregator_README.md)
 
 ### 4. Drawing Cleaner (`DrawingCleaner.cpp`)
 - **Intent**: A utility bound to a toolbar button for selective chart cleanup.
