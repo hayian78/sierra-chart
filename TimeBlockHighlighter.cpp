@@ -244,25 +244,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         MaxMarkersPerDayInput.SetIntLimits(1, 200);
         MaxMarkersPerDayInput.DisplayOrder = dispOrder++;
 
-        // ===== PROJECTIONS =====
-        HeaderProjections.Name = "===== PROJECTIONS =====";
-        HeaderProjections.SetInt(0);
-        HeaderProjections.SetIntLimits(0, 0);
-        HeaderProjections.DisplayOrder = dispOrder++;
-
-        ExtendActiveBlockInput.Name = "Extend Active Block into Future";
-        ExtendActiveBlockInput.SetYesNo(1);
-        ExtendActiveBlockInput.DisplayOrder = dispOrder++;
-
-        PreviewUpcomingBlockInput.Name = "Preview Upcoming Block";
-        PreviewUpcomingBlockInput.SetYesNo(1);
-        PreviewUpcomingBlockInput.DisplayOrder = dispOrder++;
-
-        PreviewMinutesInput.Name = "Preview Minutes Before Start";
-        PreviewMinutesInput.SetInt(60);
-        PreviewMinutesInput.SetIntLimits(1, 1440);
-        PreviewMinutesInput.DisplayOrder = dispOrder++;
-
         // ===== TZ TICK LABELS =====
         HeaderTzTicks.Name = "===== TZ TICK LABELS =====";
         HeaderTzTicks.SetInt(0);
@@ -310,6 +291,25 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         DayFilterInput.Name = "Allowed Days (Mon,Tue,Wed,Thu,Fri,Sat,Sun)";
         DayFilterInput.SetString("Mon,Tue,Wed,Thu,Fri");
         DayFilterInput.DisplayOrder = dispOrder++;
+
+        // ===== PROJECTIONS =====
+        HeaderProjections.Name = "===== PROJECTIONS =====";
+        HeaderProjections.SetInt(0);
+        HeaderProjections.SetIntLimits(0, 0);
+        HeaderProjections.DisplayOrder = dispOrder++;
+
+        ExtendActiveBlockInput.Name = "Extend Active Block into Future";
+        ExtendActiveBlockInput.SetYesNo(1);
+        ExtendActiveBlockInput.DisplayOrder = dispOrder++;
+
+        PreviewUpcomingBlockInput.Name = "Preview Upcoming Block";
+        PreviewUpcomingBlockInput.SetYesNo(1);
+        PreviewUpcomingBlockInput.DisplayOrder = dispOrder++;
+
+        PreviewMinutesInput.Name = "Preview Minutes Before Start";
+        PreviewMinutesInput.SetInt(60);
+        PreviewMinutesInput.SetIntLimits(1, 1440);
+        PreviewMinutesInput.DisplayOrder = dispOrder++;
 
         // ===== PERFORMANCE =====
         HeaderPerf.Name = "===== PERFORMANCE =====";
@@ -390,6 +390,15 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     SCDateTime latestDT = sc.BaseDateTimeIn[sc.ArraySize - 1];
     const int  latestDate = (int)latestDT.GetDate();
 
+    // Parse HHMM offset (signed) into seconds for both Ticks and Markers
+    int sign = (tzOffsetHHMM < 0) ? -1 : 1;
+    int absHHMM = (tzOffsetHHMM < 0) ? -tzOffsetHHMM : tzOffsetHHMM;
+    int offH = absHHMM / 100;
+    int offM = absHHMM % 100;
+    if (offM > 59) offM = 59;
+    const int offsetSeconds = sign * (offH * 3600 + offM * 60);
+    const double secondsPerDay = 86400.0;
+
     // Day-of-week filter - pre-compute bitmask for performance
     SCString dowFilterSC = DayFilterInput.GetString();
     const char* dowFilter = dowFilterSC.GetChars();
@@ -435,27 +444,59 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         return IsTimeInWindow(dt.GetTime(), s, e);
     };
 
-    auto GetNextSessionBounds = [&](double s, double e, const SCDateTime& now, SCDateTime& outStart, SCDateTime& outEnd)
+    // Helper: compute the bounds of the current or next session occurrence
+    // relative to 'now'.  When skipCurrent=true the session that 'now' is
+    // inside is skipped and the *next* occurrence is returned instead.
+    auto GetNextSessionBounds = [&](double s, double e, const SCDateTime& now,
+                                    SCDateTime& outStart, SCDateTime& outEnd,
+                                    bool skipCurrent = false)
     {
-        SCDateTime todayStart = now.GetDate() + s;
-        SCDateTime todayEnd   = now.GetDate() + e;
-        if (s > e) todayEnd += 1.0; 
+        SCDateTime todayStart = now.GetDate() + (s / 86400.0);
+        SCDateTime todayEnd   = now.GetDate() + (e / 86400.0);
+        if (s > e) todayEnd += 1.0;  // overnight session
 
-        if (now < todayStart) {
-            outStart = todayStart;
-            outEnd   = todayEnd;
-        } else if (now < todayEnd) {
-            outStart = todayStart;
-            outEnd   = todayEnd;
-        } else {
-            outStart = todayStart + 1.0;
-            outEnd   = todayEnd + 1.0;
-        }
-        
-        for (int i = 0; i < 7; i++) {
-            if (IsDayAllowed(outStart.GetDayOfWeek())) {
-                break;
+        // Check if we are inside the tail of an overnight session that started yesterday
+        if (s > e)
+        {
+            SCDateTime yesterdayStart = todayStart - 1.0;
+            SCDateTime yesterdayEnd   = todayEnd   - 1.0;
+            if (now >= yesterdayStart && now < yesterdayEnd)
+            {
+                if (skipCurrent)
+                {
+                    outStart = todayStart;
+                    outEnd   = todayEnd;
+                }
+                else
+                {
+                    outStart = yesterdayStart;
+                    outEnd   = yesterdayEnd;
+                }
+                return;
             }
+        }
+
+        if (now < todayStart)
+        {
+            outStart = todayStart;
+            outEnd   = todayEnd;
+        }
+        else if (now < todayEnd && !skipCurrent)
+        {
+            outStart = todayStart;
+            outEnd   = todayEnd;
+        }
+        else
+        {
+            outStart = todayStart + 1.0;
+            outEnd   = todayEnd   + 1.0;
+        }
+
+        // Skip to next allowed day-of-week
+        for (int i = 0; i < 7; i++)
+        {
+            if (IsDayAllowed(outStart.GetDayOfWeek()))
+                break;
             outStart += 1.0;
             outEnd   += 1.0;
         }
@@ -474,10 +515,10 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     const int maxMarkersPerDay = MaxMarkersPerDayInput.GetInt();
     
     // Projections
-    const int extendActive = ExtendActiveBlockInput.GetYesNo();
+    const int extendActive    = ExtendActiveBlockInput.GetYesNo();
     const int previewUpcoming = PreviewUpcomingBlockInput.GetYesNo();
-    const int previewMinutes = PreviewMinutesInput.GetInt();
-
+    const int previewMinutes  = PreviewMinutesInput.GetInt();
+    
     // -------------------- Hash Caching: Skip redraw if nothing changed --------------------
     if (enableHashCaching)
     {
@@ -502,6 +543,11 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         currentHash ^= stableMode;
         currentHash ^= sc.ArraySize;
         
+        // Projections
+        currentHash ^= extendActive;
+        currentHash ^= previewUpcoming;
+        currentHash ^= previewMinutes;
+        
         // Time Markers
         currentHash ^= enableMarkers;
         currentHash ^= (int)(markerLabelVerticalOffset * 100);
@@ -511,11 +557,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         currentHash ^= markerLabelFontSize;
         currentHash ^= (int)markerLabelColor;
         currentHash ^= maxMarkersPerDay;
-        
-        // Projections
-        currentHash ^= extendActive;
-        currentHash ^= previewUpcoming;
-        currentHash ^= previewMinutes;
         
         // Simple hash of day filter and labels
         if (dowFilter != NULL)
@@ -630,14 +671,28 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     if (boxEnd <= boxBegin)
         return;
 
+    // Helper: Convert a future DateTime to a virtual bar index in SC's forward fill space.
+    // DRAWING_RECTANGLEHIGHLIGHT handles future DateTimes natively, but DRAWING_TEXT and
+    // DRAWING_LINE do not reliably render at BeginDateTime positions in blank space.
+    // Using virtual bar indices beyond sc.ArraySize-1 makes SC render them correctly.
+    auto FutureBarIndex = [&](const SCDateTime& futureDT) -> int
+    {
+        if (sc.ArraySize <= 0 || sc.SecondsPerBar <= 0)
+            return sc.ArraySize > 0 ? sc.ArraySize - 1 : 0;
+        SCDateTime lastBarDT = sc.BaseDateTimeIn[sc.ArraySize - 1];
+        double offsetSec = (futureDT - lastBarDT).GetAsDouble() * 86400.0;
+        int barsForward = (int)(offsetSec / sc.SecondsPerBar + 0.5);
+        if (barsForward < 1) barsForward = 1;
+        return (sc.ArraySize - 1) + barsForward;
+    };
+
     // Draw rectangle + label for a segment
     auto DrawSegment = [&](int segmentIndex, int beginIndex, int endIndex,
                            const SCSubgraphRef& BorderSG, const SCSubgraphRef& FillSG,
                            const char* text,
-                           int rectBase,
-                           SCDateTime forceBeginDT = 0.0, SCDateTime forceEndDT = 0.0)
+                           int rectBase)
     {
-        if (beginIndex >= 0 && endIndex >= 0 && endIndex < beginIndex)
+        if (endIndex < beginIndex)
             return;
 
         const int rectLine = rectBase + 2 * segmentIndex;
@@ -648,13 +703,8 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         R.ChartNumber = sc.ChartNumber;
         R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
         R.Region      = sc.GraphRegion;
-        
-        if (forceBeginDT != 0.0) R.BeginDateTime = forceBeginDT;
-        else R.BeginIndex = beginIndex;
-        
-        if (forceEndDT != 0.0) R.EndDateTime = forceEndDT;
-        else R.EndIndex = endIndex;
-        
+        R.BeginIndex  = beginIndex;
+        R.EndIndex    = endIndex;
         R.UseRelativeVerticalValues = 1;
         R.BeginValue  = boxBegin;
         R.EndValue    = boxEnd;
@@ -672,23 +722,30 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         if (text != NULL && text[0] != '\0')
         {
+            // We want the session header (e.g. "Globex", "RTH") to stay
+            // centered over the *visible* portion of its session, while
+            // never moving outside the actual session bounds.
+            //
+            // Compute the intersection of this segment with the current
+            // visible bar range, and center the label there. If the
+            // segment is completely off-screen, we fall back to the
+            // original full-segment midpoint, which will also be off-screen.
             int effectiveStart = beginIndex;
             int effectiveEnd   = endIndex;
 
-            if (beginIndex >= 0 && endIndex >= 0)
+            if (visibleEnd >= visibleStart)
             {
-                if (visibleEnd >= visibleStart)
+                // If there is any overlap between [beginIndex,endIndex]
+                // and [visibleStart,visibleEnd], clamp to that overlap.
+                if (!(endIndex < visibleStart || beginIndex > visibleEnd))
                 {
-                    if (!(endIndex < visibleStart || beginIndex > visibleEnd))
-                    {
-                        if (beginIndex < visibleStart) effectiveStart = visibleStart;
-                        if (endIndex   > visibleEnd)   effectiveEnd   = visibleEnd;
-                    }
+                    if (beginIndex < visibleStart) effectiveStart = visibleStart;
+                    if (endIndex   > visibleEnd)   effectiveEnd   = visibleEnd;
                 }
-
-                if (effectiveEnd < effectiveStart)
-                    effectiveStart = effectiveEnd = beginIndex + (endIndex - beginIndex) / 2;
             }
+
+            if (effectiveEnd < effectiveStart)
+                effectiveStart = effectiveEnd = beginIndex + (endIndex - beginIndex) / 2;
 
             const int midIndex = effectiveStart + (effectiveEnd - effectiveStart) / 2;
 
@@ -705,36 +762,30 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
 
             int alignInput = TextAlignment.GetInt();
-            int anchorIndex = midIndex;
-            SCDateTime anchorDT = 0.0;
+            int anchorIndex;
             const int padBars = 10;
-            
-            if (beginIndex < 0) 
+
+            switch (alignInput)
             {
-                if (alignInput == 0) anchorDT = forceBeginDT;
-                else if (alignInput == 2) anchorDT = forceEndDT;
-                else anchorDT = forceBeginDT + (forceEndDT - forceBeginDT) / 2.0;
-            }
-            else
-            {
-                switch (alignInput)
-                {
-                    case 0:
-                        anchorIndex = effectiveStart + padBars;
-                        if (anchorIndex > effectiveEnd)   anchorIndex = effectiveEnd;
-                        if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
-                        if (anchorIndex > endIndex)       anchorIndex = endIndex;
-                        break;
-                    case 2:
-                        anchorIndex = effectiveEnd - padBars;
-                        if (anchorIndex < effectiveStart) anchorIndex = effectiveStart;
-                        if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
-                        if (anchorIndex > endIndex)       anchorIndex = endIndex;
-                        break;
-                    default:
-                        anchorIndex = midIndex;
-                        break;
-                }
+                case 0:
+                    // Left-aligned: pad from the left of the *visible*
+                    // portion, but never outside the true session bounds.
+                    anchorIndex = effectiveStart + padBars;
+                    if (anchorIndex > effectiveEnd)   anchorIndex = effectiveEnd;
+                    if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
+                    if (anchorIndex > endIndex)       anchorIndex = endIndex;
+                    break;
+                case 2:
+                    // Right-aligned: pad from the right of the *visible*
+                    // portion, but never outside the true session bounds.
+                    anchorIndex = effectiveEnd - padBars;
+                    if (anchorIndex < effectiveStart) anchorIndex = effectiveStart;
+                    if (anchorIndex < beginIndex)     anchorIndex = beginIndex;
+                    if (anchorIndex > endIndex)       anchorIndex = endIndex;
+                    break;
+                default:
+                    anchorIndex = midIndex;
+                    break;
             }
 
             s_UseTool T;
@@ -742,10 +793,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             T.ChartNumber = sc.ChartNumber;
             T.DrawingType = DRAWING_TEXT;
             T.Region      = sc.GraphRegion;
-            
-            if (beginIndex < 0) T.BeginDateTime = anchorDT;
-            else T.BeginIndex = anchorIndex;
-            
+            T.BeginIndex  = anchorIndex;
             T.UseRelativeVerticalValues = 1;
             T.BeginValue  = labelY;
             T.Text        = text;
@@ -787,26 +835,179 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             // Defensive limit to prevent line number overflow
             if (segCountA >= 9999) break;
         }
-        
-        if (inSeg && segCountA < 9999) { 
-            SCDateTime extEndDT = 0.0;
-            if (extendActive && scanEnd == sc.ArraySize - 1) {
-                SCDateTime sDT, eDT;
-                GetNextSessionBounds(startA, endA, sc.BaseDateTimeIn[scanEnd], sDT, eDT);
-                extEndDT = eDT;
+        if (inSeg && segCountA < 9999) { DrawSegment(segCountA, segStart, scanEnd, BorderA, FillA, labelA, rectBaseA); segCountA++; }
+
+        // ---- FUTURE PROJECTION: Extend active session A into blank space ----
+        // When the last bar is inside session A and we are at the chart edge,
+        // draw an additional rectangle from the last bar to the session end time.
+        // DRAWING_RECTANGLEHIGHLIGHT with EndDateTime renders natively in future space.
+        if (extendActive && inSeg && scanEnd == sc.ArraySize - 1 && segCountA < 9999)
+        {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startA, endA, sc.BaseDateTimeIn[scanEnd], sDT, eDT, false);
+            if (eDT > latestDT)
+            {
+                // Delete the historical segment's label — the floating label below replaces it
+                sc.DeleteACSChartDrawing(sc.ChartNumber, 0, rectBaseA + 2 * (segCountA - 1) + 1);
+
+                const int futRectLine = rectBaseA + 2 * segCountA;
+                const int futTextLine = rectBaseA + 2 * segCountA + 1;
+
+                // Draw the future extension rectangle using DateTimes
+                s_UseTool R;
+                R.Clear();
+                R.ChartNumber = sc.ChartNumber;
+                R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
+                R.Region      = sc.GraphRegion;
+                R.BeginDateTime = sc.BaseDateTimeIn[scanEnd];
+                R.EndDateTime   = eDT;
+                R.UseRelativeVerticalValues = 1;
+                R.BeginValue  = boxBegin;
+                R.EndValue    = boxEnd;
+                R.Color             = BorderA.PrimaryColor;
+                R.LineWidth         = BorderA.LineWidth;
+                R.LineStyle         = BorderA.LineStyle;
+                R.SecondaryColor    = FillA.PrimaryColor;
+                R.TransparencyLevel = transparency;
+                R.AddAsUserDrawnDrawing = 0;
+                R.LineNumber  = futRectLine;
+                R.AddMethod   = UTAM_ADD_OR_ADJUST;
+                sc.UseTool(R);
+
+                // Floating label centered in the visible portion of the full extended segment
+                if (labelA != NULL && labelA[0] != '\0')
+                {
+                    SCDateTime segStartDT = sc.BaseDateTimeIn[segStart];
+                    SCDateTime segEndDT   = eDT;
+
+                    // Clamp to visible range for centering
+                    SCDateTime visStartDT = sc.BaseDateTimeIn[visibleStart];
+                    SCDateTime visEndDT   = sc.BaseDateTimeIn[visibleEnd];
+                    double barPeriodDays = (sc.SecondsPerBar > 0) ? sc.SecondsPerBar / 86400.0 : 60.0 / 86400.0;
+                    int visibleBarCount = visibleEnd - visibleStart + 1;
+                    double forwardDays = barPeriodDays * (visibleBarCount * 0.4);
+                    SCDateTime visRightEdgeDT = visEndDT + forwardDays;
+
+                    SCDateTime effStart = (segStartDT > visStartDT) ? segStartDT : visStartDT;
+                    SCDateTime effEnd   = (segEndDT < visRightEdgeDT) ? segEndDT : visRightEdgeDT;
+                    if (effEnd < effStart) effEnd = effStart;
+
+                    SCDateTime midDT = effStart + (effEnd - effStart).GetAsDouble() / 2.0;
+                    int labelIdx = FutureBarIndex(midDT);
+                    // Clamp to historical range if midDT is within data
+                    if (midDT <= latestDT)
+                    {
+                        int bi = sc.GetNearestMatchForSCDateTime(sc.ChartNumber, midDT);
+                        if (bi >= 0 && bi < sc.ArraySize) labelIdx = bi;
+                    }
+
+                    const float boxH = (boxEnd - boxBegin);
+                    float labelY = (boxBegin + boxEnd) * 0.5f;
+                    float yPct = labelYOffset;
+                    if (yPct < -100.0f) yPct = -100.0f;
+                    if (yPct >  100.0f) yPct =  100.0f;
+                    labelY += boxH * (yPct / 100.0f);
+                    const float padInside = boxH * 0.10f;
+                    if (labelY < boxBegin + padInside) labelY = boxBegin + padInside;
+                    if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
+
+                    s_UseTool T;
+                    T.Clear();
+                    T.ChartNumber = sc.ChartNumber;
+                    T.DrawingType = DRAWING_TEXT;
+                    T.Region      = sc.GraphRegion;
+                    T.BeginIndex  = labelIdx;  // virtual bar index for future text
+                    T.UseRelativeVerticalValues = 1;
+                    T.BeginValue  = labelY;
+                    T.Text        = labelA;
+                    T.FontSize    = labelSize;
+                    T.TextColor   = labelColor;
+                    T.TransparentLabelBackground = 1;
+                    T.TextAlignment = DT_CENTER | DT_VCENTER;
+                    T.AddAsUserDrawnDrawing = 0;
+                    T.LineNumber  = futTextLine;
+                    T.AddMethod   = UTAM_ADD_OR_ADJUST;
+                    sc.UseTool(T);
+                }
+                else
+                {
+                    sc.DeleteACSChartDrawing(sc.ChartNumber, 0, futTextLine);
+                }
+                segCountA++;
             }
-            DrawSegment(segCountA, segStart, scanEnd, BorderA, FillA, labelA, rectBaseA, 0.0, extEndDT); 
-            segCountA++; 
         }
 
-        if (previewUpcoming && segCountA < 9999) {
+        // ---- FUTURE PROJECTION: Preview upcoming session A ----
+        if (previewUpcoming && segCountA < 9999)
+        {
             SCDateTime sDT, eDT;
-            GetNextSessionBounds(startA, endA, latestDT, sDT, eDT);
-            if (latestDT < sDT) {
-                if (!onlyToday || sDT.GetDate() == latestDate) {
-                    double minsToStart = (sDT - latestDT) * 1440.0;
-                    if (minsToStart <= previewMinutes && minsToStart >= 0) {
-                        DrawSegment(segCountA, -1, -1, BorderA, FillA, labelA, rectBaseA, sDT, eDT);
+            GetNextSessionBounds(startA, endA, latestDT, sDT, eDT, true);
+            if (latestDT < sDT)
+            {
+                if (!onlyToday || sDT.GetDate() == latestDate)
+                {
+                    double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0)
+                    {
+                        const int futRectLine = rectBaseA + 2 * segCountA;
+                        const int futTextLine = rectBaseA + 2 * segCountA + 1;
+
+                        s_UseTool R;
+                        R.Clear();
+                        R.ChartNumber = sc.ChartNumber;
+                        R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
+                        R.Region      = sc.GraphRegion;
+                        R.BeginDateTime = sDT;
+                        R.EndDateTime   = eDT;
+                        R.UseRelativeVerticalValues = 1;
+                        R.BeginValue  = boxBegin;
+                        R.EndValue    = boxEnd;
+                        R.Color             = BorderA.PrimaryColor;
+                        R.LineWidth         = BorderA.LineWidth;
+                        R.LineStyle         = BorderA.LineStyle;
+                        R.SecondaryColor    = FillA.PrimaryColor;
+                        R.TransparencyLevel = transparency;
+                        R.AddAsUserDrawnDrawing = 0;
+                        R.LineNumber  = futRectLine;
+                        R.AddMethod   = UTAM_ADD_OR_ADJUST;
+                        sc.UseTool(R);
+
+                        // Label at center using virtual bar index
+                        if (labelA != NULL && labelA[0] != '\0')
+                        {
+                            SCDateTime midDT = sDT + (eDT - sDT).GetAsDouble() / 2.0;
+                            const float boxH = (boxEnd - boxBegin);
+                            float labelY = (boxBegin + boxEnd) * 0.5f;
+                            float yPct = labelYOffset;
+                            if (yPct < -100.0f) yPct = -100.0f;
+                            if (yPct >  100.0f) yPct =  100.0f;
+                            labelY += boxH * (yPct / 100.0f);
+                            const float padInside = boxH * 0.10f;
+                            if (labelY < boxBegin + padInside) labelY = boxBegin + padInside;
+                            if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
+
+                            s_UseTool T;
+                            T.Clear();
+                            T.ChartNumber = sc.ChartNumber;
+                            T.DrawingType = DRAWING_TEXT;
+                            T.Region      = sc.GraphRegion;
+                            T.BeginIndex  = FutureBarIndex(midDT);
+                            T.UseRelativeVerticalValues = 1;
+                            T.BeginValue  = labelY;
+                            T.Text        = labelA;
+                            T.FontSize    = labelSize;
+                            T.TextColor   = labelColor;
+                            T.TransparentLabelBackground = 1;
+                            T.TextAlignment = DT_CENTER | DT_VCENTER;
+                            T.AddAsUserDrawnDrawing = 0;
+                            T.LineNumber  = futTextLine;
+                            T.AddMethod   = UTAM_ADD_OR_ADJUST;
+                            sc.UseTool(T);
+                        }
+                        else
+                        {
+                            sc.DeleteACSChartDrawing(sc.ChartNumber, 0, futTextLine);
+                        }
                         segCountA++;
                     }
                 }
@@ -839,26 +1040,172 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             // Defensive limit to prevent line number overflow
             if (segCountB >= 9999) break;
         }
-        
-        if (inSeg && segCountB < 9999) { 
-            SCDateTime extEndDT = 0.0;
-            if (extendActive && scanEnd == sc.ArraySize - 1) {
-                SCDateTime sDT, eDT;
-                GetNextSessionBounds(startB, endB, sc.BaseDateTimeIn[scanEnd], sDT, eDT);
-                extEndDT = eDT;
+        if (inSeg && segCountB < 9999) { DrawSegment(segCountB, segStart, scanEnd, BorderB, FillB, labelB, rectBaseB); segCountB++; }
+
+        // ---- FUTURE PROJECTION: Extend active session B into blank space ----
+        if (extendActive && inSeg && scanEnd == sc.ArraySize - 1 && segCountB < 9999)
+        {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startB, endB, sc.BaseDateTimeIn[scanEnd], sDT, eDT, false);
+            if (eDT > latestDT)
+            {
+                // Delete the historical segment's label — the floating label below replaces it
+                sc.DeleteACSChartDrawing(sc.ChartNumber, 0, rectBaseB + 2 * (segCountB - 1) + 1);
+
+                const int futRectLine = rectBaseB + 2 * segCountB;
+                const int futTextLine = rectBaseB + 2 * segCountB + 1;
+
+                s_UseTool R;
+                R.Clear();
+                R.ChartNumber = sc.ChartNumber;
+                R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
+                R.Region      = sc.GraphRegion;
+                R.BeginDateTime = sc.BaseDateTimeIn[scanEnd];
+                R.EndDateTime   = eDT;
+                R.UseRelativeVerticalValues = 1;
+                R.BeginValue  = boxBegin;
+                R.EndValue    = boxEnd;
+                R.Color             = BorderB.PrimaryColor;
+                R.LineWidth         = BorderB.LineWidth;
+                R.LineStyle         = BorderB.LineStyle;
+                R.SecondaryColor    = FillB.PrimaryColor;
+                R.TransparencyLevel = transparency;
+                R.AddAsUserDrawnDrawing = 0;
+                R.LineNumber  = futRectLine;
+                R.AddMethod   = UTAM_ADD_OR_ADJUST;
+                sc.UseTool(R);
+
+                // Floating label centered in visible portion of extended segment
+                if (labelB != NULL && labelB[0] != '\0')
+                {
+                    SCDateTime segStartDT = sc.BaseDateTimeIn[segStart];
+                    SCDateTime segEndDT   = eDT;
+
+                    SCDateTime visStartDT = sc.BaseDateTimeIn[visibleStart];
+                    SCDateTime visEndDT   = sc.BaseDateTimeIn[visibleEnd];
+                    double barPeriodDays = (sc.SecondsPerBar > 0) ? sc.SecondsPerBar / 86400.0 : 60.0 / 86400.0;
+                    int visibleBarCount = visibleEnd - visibleStart + 1;
+                    double forwardDays = barPeriodDays * (visibleBarCount * 0.4);
+                    SCDateTime visRightEdgeDT = visEndDT + forwardDays;
+
+                    SCDateTime effStart = (segStartDT > visStartDT) ? segStartDT : visStartDT;
+                    SCDateTime effEnd   = (segEndDT < visRightEdgeDT) ? segEndDT : visRightEdgeDT;
+                    if (effEnd < effStart) effEnd = effStart;
+
+                    SCDateTime midDT = effStart + (effEnd - effStart).GetAsDouble() / 2.0;
+                    int labelIdx = FutureBarIndex(midDT);
+                    if (midDT <= latestDT)
+                    {
+                        int bi = sc.GetNearestMatchForSCDateTime(sc.ChartNumber, midDT);
+                        if (bi >= 0 && bi < sc.ArraySize) labelIdx = bi;
+                    }
+
+                    const float boxH = (boxEnd - boxBegin);
+                    float labelY = (boxBegin + boxEnd) * 0.5f;
+                    float yPct = labelYOffset;
+                    if (yPct < -100.0f) yPct = -100.0f;
+                    if (yPct >  100.0f) yPct =  100.0f;
+                    labelY += boxH * (yPct / 100.0f);
+                    const float padInside = boxH * 0.10f;
+                    if (labelY < boxBegin + padInside) labelY = boxBegin + padInside;
+                    if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
+
+                    s_UseTool T;
+                    T.Clear();
+                    T.ChartNumber = sc.ChartNumber;
+                    T.DrawingType = DRAWING_TEXT;
+                    T.Region      = sc.GraphRegion;
+                    T.BeginIndex  = labelIdx;
+                    T.UseRelativeVerticalValues = 1;
+                    T.BeginValue  = labelY;
+                    T.Text        = labelB;
+                    T.FontSize    = labelSize;
+                    T.TextColor   = labelColor;
+                    T.TransparentLabelBackground = 1;
+                    T.TextAlignment = DT_CENTER | DT_VCENTER;
+                    T.AddAsUserDrawnDrawing = 0;
+                    T.LineNumber  = futTextLine;
+                    T.AddMethod   = UTAM_ADD_OR_ADJUST;
+                    sc.UseTool(T);
+                }
+                else
+                {
+                    sc.DeleteACSChartDrawing(sc.ChartNumber, 0, futTextLine);
+                }
+                segCountB++;
             }
-            DrawSegment(segCountB, segStart, scanEnd, BorderB, FillB, labelB, rectBaseB, 0.0, extEndDT); 
-            segCountB++; 
         }
 
-        if (previewUpcoming && segCountB < 9999) {
+        // ---- FUTURE PROJECTION: Preview upcoming session B ----
+        if (previewUpcoming && segCountB < 9999)
+        {
             SCDateTime sDT, eDT;
-            GetNextSessionBounds(startB, endB, latestDT, sDT, eDT);
-            if (latestDT < sDT) {
-                if (!onlyToday || sDT.GetDate() == latestDate) {
-                    double minsToStart = (sDT - latestDT) * 1440.0;
-                    if (minsToStart <= previewMinutes && minsToStart >= 0) {
-                        DrawSegment(segCountB, -1, -1, BorderB, FillB, labelB, rectBaseB, sDT, eDT);
+            GetNextSessionBounds(startB, endB, latestDT, sDT, eDT, true);
+            if (latestDT < sDT)
+            {
+                if (!onlyToday || sDT.GetDate() == latestDate)
+                {
+                    double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0)
+                    {
+                        const int futRectLine = rectBaseB + 2 * segCountB;
+                        const int futTextLine = rectBaseB + 2 * segCountB + 1;
+
+                        s_UseTool R;
+                        R.Clear();
+                        R.ChartNumber = sc.ChartNumber;
+                        R.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
+                        R.Region      = sc.GraphRegion;
+                        R.BeginDateTime = sDT;
+                        R.EndDateTime   = eDT;
+                        R.UseRelativeVerticalValues = 1;
+                        R.BeginValue  = boxBegin;
+                        R.EndValue    = boxEnd;
+                        R.Color             = BorderB.PrimaryColor;
+                        R.LineWidth         = BorderB.LineWidth;
+                        R.LineStyle         = BorderB.LineStyle;
+                        R.SecondaryColor    = FillB.PrimaryColor;
+                        R.TransparencyLevel = transparency;
+                        R.AddAsUserDrawnDrawing = 0;
+                        R.LineNumber  = futRectLine;
+                        R.AddMethod   = UTAM_ADD_OR_ADJUST;
+                        sc.UseTool(R);
+
+                        if (labelB != NULL && labelB[0] != '\0')
+                        {
+                            SCDateTime midDT = sDT + (eDT - sDT).GetAsDouble() / 2.0;
+                            const float boxH = (boxEnd - boxBegin);
+                            float labelY = (boxBegin + boxEnd) * 0.5f;
+                            float yPct = labelYOffset;
+                            if (yPct < -100.0f) yPct = -100.0f;
+                            if (yPct >  100.0f) yPct =  100.0f;
+                            labelY += boxH * (yPct / 100.0f);
+                            const float padInside = boxH * 0.10f;
+                            if (labelY < boxBegin + padInside) labelY = boxBegin + padInside;
+                            if (labelY > boxEnd   - padInside) labelY = boxEnd   - padInside;
+
+                            s_UseTool T;
+                            T.Clear();
+                            T.ChartNumber = sc.ChartNumber;
+                            T.DrawingType = DRAWING_TEXT;
+                            T.Region      = sc.GraphRegion;
+                            T.BeginIndex  = FutureBarIndex(midDT);
+                            T.UseRelativeVerticalValues = 1;
+                            T.BeginValue  = labelY;
+                            T.Text        = labelB;
+                            T.FontSize    = labelSize;
+                            T.TextColor   = labelColor;
+                            T.TransparentLabelBackground = 1;
+                            T.TextAlignment = DT_CENTER | DT_VCENTER;
+                            T.AddAsUserDrawnDrawing = 0;
+                            T.LineNumber  = futTextLine;
+                            T.AddMethod   = UTAM_ADD_OR_ADJUST;
+                            sc.UseTool(T);
+                        }
+                        else
+                        {
+                            sc.DeleteACSChartDrawing(sc.ChartNumber, 0, futTextLine);
+                        }
                         segCountB++;
                     }
                 }
@@ -914,15 +1261,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         if (tickEveryMin < 1)
             tickEveryMin = 1;
         
-        // Parse HHMM offset (signed) into seconds
-        int sign = (tzOffsetHHMM < 0) ? -1 : 1;
-        int absHHMM = (tzOffsetHHMM < 0) ? -tzOffsetHHMM : tzOffsetHHMM;
-        int offH = absHHMM / 100;
-        int offM = absHHMM % 100;
-        if (offM > 59) offM = 59;
-        const int offsetSeconds = sign * (offH * 3600 + offM * 60);
-        
-        const double secondsPerDay = 86400.0;
         const int intervalSeconds = tickEveryMin * 60;
         
         auto FormatLocalTime = [&](const SCDateTime& chartDT, char* out, int outSize)
@@ -1010,6 +1348,114 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
             sc.UseTool(T);
             
             tzTickIndex++;
+        }
+
+        int lastFutureTzTickVI = -1;
+
+        // ---- FUTURE PROJECTION: TZ Tick Labels in blank future space ----
+        // After drawing historical ticks, generate future ticks from lastBarDT to session end.
+        // Uses virtual bar indices (DRAWING_TEXT with BeginIndex) since BeginDateTime is unreliable in blank space.
+        auto DrawFutureTick = [&](const SCDateTime& tickDT)
+        {
+            if (maxTzTicks > 0 && tzTickIndex >= maxTzTicks)
+                return;
+
+            int vi = FutureBarIndex(tickDT);
+            if (vi == lastFutureTzTickVI)
+                return; // Prevent duplicate labels at session crossovers
+            lastFutureTzTickVI = vi;
+
+            const int textNumber = tzBase + tzTickIndex;
+            char buf[32];
+            buf[0] = '\0';
+            FormatLocalTime(tickDT, buf, (int)sizeof(buf));
+
+            s_UseTool T;
+            T.Clear();
+            T.ChartNumber = sc.ChartNumber;
+            T.DrawingType = DRAWING_TEXT;
+            T.Region      = sc.GraphRegion;
+            T.BeginIndex  = vi;  // virtual bar index
+            T.UseRelativeVerticalValues = 1;
+            T.BeginValue  = tzTextY;
+            T.Text        = buf;
+            T.FontSize    = tickFontSize;
+            T.TextColor   = tickColor;
+            T.TransparentLabelBackground = 1;
+            T.TextAlignment = DT_CENTER | DT_VCENTER;
+            T.AddAsUserDrawnDrawing = 0;
+            T.LineNumber  = textNumber;
+            T.AddMethod   = UTAM_ADD_OR_ADJUST;
+            sc.UseTool(T);
+
+            tzTickIndex++;
+        };
+
+        auto DrawFutureRangeTicks = [&](const SCDateTime& rangeStart, const SCDateTime& rangeEnd)
+        {
+            // Start at the first slot boundary *after* rangeStart
+            SCDateTime localStart = rangeStart + (double)offsetSeconds / secondsPerDay;
+            // Align localStart to the next interval boundary
+            double localSecs = localStart.GetTimeInSeconds(); // uses SCDateTime's built-in time getter
+            int startTOD = (int)localSecs;
+            int nextSlotTOD = ((startTOD / intervalSeconds) + 1) * intervalSeconds;
+            
+            SCDateTime currentDT = localStart.GetDate() + (double)nextSlotTOD / secondsPerDay;
+            // Convert back to chart time
+            currentDT -= (double)offsetSeconds / secondsPerDay;
+            
+            if (currentDT <= rangeStart) currentDT += (double)intervalSeconds / secondsPerDay;
+
+            while (currentDT < rangeEnd)
+            {
+                DrawFutureTick(currentDT);
+                currentDT += (double)intervalSeconds / secondsPerDay;
+            }
+        };
+
+        // Extend ticks for active sessions
+        if (extendActive && tickScanEnd == sc.ArraySize - 1)
+        {
+            SCDateTime lastBarDT = sc.BaseDateTimeIn[tickScanEnd];
+            if (enableA && ShouldHighlight(lastBarDT, startA, endA))
+            {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startA, endA, lastBarDT, sDT, eDT);
+                DrawFutureRangeTicks(lastBarDT, eDT);
+            }
+            if (enableB && ShouldHighlight(lastBarDT, startB, endB))
+            {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startB, endB, lastBarDT, sDT, eDT);
+                DrawFutureRangeTicks(lastBarDT, eDT);
+            }
+        }
+
+        // Preview ticks for upcoming sessions
+        if (previewUpcoming)
+        {
+            if (enableA)
+            {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startA, endA, latestDT, sDT, eDT, true);
+                if (latestDT < sDT && (!onlyToday || sDT.GetDate() == latestDate))
+                {
+                    double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0)
+                        DrawFutureRangeTicks(sDT, eDT);
+                }
+            }
+            if (enableB)
+            {
+                SCDateTime sDT, eDT;
+                GetNextSessionBounds(startB, endB, latestDT, sDT, eDT, true);
+                if (latestDT < sDT && (!onlyToday || sDT.GetDate() == latestDate))
+                {
+                    double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                    if (minsToStart <= previewMinutes && minsToStart >= 0)
+                        DrawFutureRangeTicks(sDT, eDT);
+                }
+            }
         }
     }
     
@@ -1176,7 +1622,140 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     
     const int markerBase = baseLine + 80000;
     int markerDrawIndex = 0;
-    
+
+    // ---- FUTURE PROJECTION: Time Markers (PRIORITY — draw before historical) ----
+    // Future markers are drawn first so they get budget priority.
+    // Uses virtual bar indices for both DRAWING_LINE and DRAWING_TEXT.
+    auto DrawFutureMarker = [&](const SCDateTime& markerDT, const TimeMarker& marker)
+    {
+        if (markerDrawIndex >= maxMarkersPerDay)
+            return;
+
+        const int lineNum  = markerBase + 2 * markerDrawIndex;
+        const int labelNum = markerBase + 2 * markerDrawIndex + 1;
+        int vi = FutureBarIndex(markerDT);
+        sc.AddMessageToLog(sc.GraphShortName + SCString(": DrawFutureMarker called, vi=") + SCString(vi) + SCString(" label=") + SCString(marker.label), 0);
+
+        // DRAWING_LINE with virtual bar index for future space
+        s_UseTool L;
+        L.Clear();
+        L.ChartNumber = sc.ChartNumber;
+        L.DrawingType = DRAWING_LINE;
+        L.Region      = sc.GraphRegion;
+        L.BeginIndex  = vi;
+        L.EndIndex    = vi;
+        L.UseRelativeVerticalValues = 1;
+        L.BeginValue  = 100.0f;
+        L.EndValue    = 100.0f - 5.0f * (boxEnd - boxBegin);
+        L.Color       = marker.color;
+        L.LineWidth   = markerLineWidth;
+        L.LineStyle   = (SubgraphLineStyles)lineStyleValue;
+        L.AddAsUserDrawnDrawing = 0;
+        L.LineNumber  = lineNum;
+        L.AddMethod   = UTAM_ADD_OR_ADJUST;
+        sc.UseTool(L);
+
+        if (marker.label[0] != '\0')
+        {
+            const float labelY = boxBegin - 1.0f + markerLabelVerticalOffset;
+
+            s_UseTool T;
+            T.Clear();
+            T.ChartNumber = sc.ChartNumber;
+            T.DrawingType = DRAWING_TEXT;
+            T.Region      = sc.GraphRegion;
+            T.BeginIndex  = vi;  // virtual bar index for future text
+            T.UseRelativeVerticalValues = 1;
+            T.BeginValue  = labelY;
+            T.Text        = marker.label;
+            T.FontSize    = markerLabelFontSize;
+            // Handle fallback to marker color if markerLabelColor is 0, just like the historical loop!
+            T.TextColor   = (markerLabelColor == 0) ? marker.color : markerLabelColor;
+            T.TransparentLabelBackground = 1;
+            T.TextAlignment = DT_CENTER | DT_VCENTER;
+            T.AddAsUserDrawnDrawing = 0;
+            T.LineNumber  = labelNum;
+            T.AddMethod   = UTAM_ADD_OR_ADJUST;
+            sc.UseTool(T);
+        }
+        else
+        {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, 0, labelNum);
+        }
+
+        markerDrawIndex++;
+    };
+
+    auto DrawFutureMarkersForSession = [&](double s, double e,
+                                           const SCDateTime& anchorDT, bool skipCurrent)
+    {
+        SCDateTime sDT, eDT;
+        GetNextSessionBounds(s, e, anchorDT, sDT, eDT, skipCurrent);
+
+        if (eDT > latestDT)
+        {
+            sc.AddMessageToLog(sc.GraphShortName + SCString(": FutureMarkersForSession s=") + SCString((int)(s*1440)) + SCString("m e=") + SCString((int)(e*1440)) + SCString("m sDT=") + sc.DateTimeToString(sDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" eDT=") + sc.DateTimeToString(eDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" mrkCnt=") + SCString(markerCount), 0);
+            for (int m = 0; m < markerCount; ++m)
+            {
+                if (IsTimeInWindow(markers[m].time, s, e))
+                {
+                    SCDateTime mDT = sDT.GetDate() + (markers[m].time / 86400.0);
+                    if (mDT < sDT) mDT += 1.0;  // handle overnight wrap
+
+                    if (mDT > latestDT && mDT <= eDT)
+                    {
+                        DrawFutureMarker(mDT, markers[m]);
+                    }
+                }
+            }
+        }
+    };
+
+    // Draw future markers for active sessions
+    if (extendActive)
+    {
+        sc.AddMessageToLog(sc.GraphShortName + SCString(": extendActive=true, enableA=") + SCString(enableA) + SCString(" enableB=") + SCString(enableB), 0);
+        if (enableA && ShouldHighlight(latestDT, startA, endA))
+        {
+            sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session A"), 0);
+            DrawFutureMarkersForSession(startA, endA, latestDT, false);
+        }
+        if (enableB && ShouldHighlight(latestDT, startB, endB))
+        {
+            sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session B"), 0);
+            DrawFutureMarkersForSession(startB, endB, latestDT, false);
+        }
+    }
+
+    // Draw future markers for upcoming preview sessions
+    if (previewUpcoming)
+    {
+        sc.AddMessageToLog(sc.GraphShortName + SCString(": previewUpcoming=true"), 0);
+        if (enableA)
+        {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startA, endA, latestDT, sDT, eDT, true);
+            if (latestDT < sDT && (!onlyToday || sDT.GetDate() == latestDate))
+            {
+                double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                if (minsToStart <= previewMinutes && minsToStart >= 0)
+                    DrawFutureMarkersForSession(startA, endA, latestDT, true);
+            }
+        }
+        if (enableB)
+        {
+            SCDateTime sDT, eDT;
+            GetNextSessionBounds(startB, endB, latestDT, sDT, eDT, true);
+            if (latestDT < sDT && (!onlyToday || sDT.GetDate() == latestDate))
+            {
+                double minsToStart = (sDT - latestDT).GetAsDouble() * 1440.0;
+                if (minsToStart <= previewMinutes && minsToStart >= 0)
+                    DrawFutureMarkersForSession(startB, endB, latestDT, true);
+            }
+        }
+    }
+
+    // ---- HISTORICAL MARKERS (remaining budget after future markers) ----
     // Independent scan range for markers so they remain stable and do not
     // get skipped by incremental session scanning.
     int markerScanStart = 0;
