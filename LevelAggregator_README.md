@@ -4,7 +4,7 @@
 
 The **Level Aggregator** is a high-performance Sierra Chart study designed to consolidate price levels from across multiple charts and timeframes into a single, actionable display. It scans for user-drawn text objects (like Horizontal Lines, Rays, and Rectangles) and aggregates them into a real-time table or draws them directly on your active chart.
 
-This study is ideal for traders who manage multiple timeframes (e.g., Weekly, Daily, 4HR, 30MIN) and need a unified "Heads-Up Display" (HUD) of key structural levels like Balance Zones, Support/Resistance, or Highs/Lows.
+This study is optimized for ES/MES scalpers who need real-time structural awareness without sacrificing Sierra Chart performance during high-volatility events.
 
 ---
 
@@ -32,12 +32,11 @@ To make a drawing discoverable by the Level Aggregator, you must follow a simple
 -   **Target Labels**: A comma-separated list of labels to scan for. 
     -   Use `|All` suffix (e.g., `BZ|All`) to find every instance of that label across all charts. 
     -   Without `|All`, it only finds the *nearest* instance above or below the current price for that specific label.
--   **Charts to Scan**: A comma-separated list of Chart IDs and their friendly names.
-    -   Format: `ChartNum|Name`
-    -   Example: `1|TPO, 9|1 MIN, 5|Weekly`
+-   **Charts to Scan**: A comma-separated list of Chart IDs and their friendly names (Format: `ChartNum|Name`).
+-   **Auto-Scan Heartbeat**: Configures the background scanning interval (Default: 1 second). This ensures cross-chart updates are tactical and responsive while protecting the UI thread from constant API calls.
 
 ### 2. Table Settings
--   **X/Y Position**: Pixel offsets from the top-left of the chart.
+-   **X/Y Position**: Pixel offsets for the HUD table.
 -   **Max Table Levels**: Limits the number of rows shown above and below the current price (0 = Show All).
 -   **Colors & Font**: Full control over text, background, and highlight colors.
 -   **Highlighting**: The study automatically highlights the nearest level immediately above and below the current price.
@@ -47,20 +46,24 @@ To make a drawing discoverable by the Level Aggregator, you must follow a simple
 -   **Show Labels on Lines**: Toggles the `Description (Chart)` labels on the chart lines.
 -   **Short Line Length (Bars)**: When using "Short Line" mode, this dictates how many bars back from the right edge the line starts.
 
-### 4. Sort Settings
--   Multi-tier sorting support. You can sort by Price (Asc/Desc), Chart Priority, Label, or Description.
+### 4. Sort & Export Settings
+-   **Multi-tier Sorting**: Sort by Price (Asc/Desc), Chart Priority, Label, or Description.
+-   **Export on Scan**: Automatically export aggregated levels to the Clipboard or a local text file.
+-   **Template Support**: Use custom `.txt` templates with tags like `{{PRICE}}`, `{{LABEL}}`, `{{DESC}}`, and `{{CHART}}` for seamless integration with external tools (like Obsidian).
 
 ---
 
 ## 🚀 Control & Fallback Logic
 
--   **Manual Control**: When button numbers are assigned (e.g., 1 and 2), you have independent control over the Table and the Lines. Pressing a button toggles its respective element and triggers a fresh scan.
--   **Always-On (Fallback)**: If you set both button numbers to `0`, the study follows the **Display Mode** setting automatically. This is useful for fixed HUD setups that don't need manual toggling.
+-   **Manual Control**: Toggle HUD elements independently via Control Bar buttons.
+-   **Always-On**: Set button numbers to `0` to follow the **Display Mode** dropdown by default.
 
 ---
 
-## 🚀 Performance Notes
+## 🚀 Performance Notes ("Zero-Lag" Engine)
 
--   **Manual Looping**: The study uses `sc.AutoLoop = 0` and only recalculates on new ticks or user actions.
--   **Scan Efficiency**: It only scans the charts you explicitly define.
--   **Drawing Management**: All on-chart drawings created by the study use a reserved ID range (`98765432` to `98765599`) and are automatically cleaned up when hidden or the study is removed.
+The Level Aggregator is designed for "Institutional Grade" efficiency:
+-   **1-Second Heartbeat**: Background scans are throttled to a 1-second interval to prevent UI lag during high-tick activity.
+-   **Boundary-Based Redraws**: The study only calls `sc.UseTool` (the most expensive UI operation) when price crosses a level boundary or a new bar is added.
+-   **String Caching**: The HUD table text is cached in memory and only rebuilt when levels change or highlights shift.
+-   **Manual Looping**: Uses `sc.AutoLoop = 0` to minimize per-tick CPU overhead.

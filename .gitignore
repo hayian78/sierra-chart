@@ -34,3 +34,5 @@ telegram_state.json
 
 # Sensitive Config
 config.json
+log.txt
+log2.txt
