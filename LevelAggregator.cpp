@@ -52,6 +52,8 @@ struct GlobalState
     bool HasScanned = false;
     SCDateTime LastScanTime;
     bool IsTableVisible = false;
+    bool AreLinesVisible = false;
+    bool HasInitialized = false;
     int LastHighIdx = -1;
     int LastLowIdx = -1;
     double LastPrice = 0;
@@ -397,8 +399,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     {
         // Core Settings
         IN_HDR_CORE = 0,
-        IN_BUTTON_NUM,
-        IN_BUTTON_TEXT,
+        IN_TABLE_BUTTON_NUM,
+        IN_TABLE_BUTTON_TEXT,
+        IN_LINE_BUTTON_NUM,
+        IN_LINE_BUTTON_TEXT,
+        IN_LINE_TYPE,
         IN_DISPLAY_MODE,
         IN_LABEL_FILTERS,
         IN_CHART_CONFIG,
@@ -448,7 +453,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
             "  Example: 1|TPO,9|Weekly\n\n"
             "LABEL MODIFIER: |All suffix finds all instances\n"
             "  Example: PDC,Support|All\n\n"
-            "DISPLAY: Button toggles table visibility.\n"
+            "DISPLAY: Dual Control Bar buttons toggle table and line visibility.\n"
             "Highlighted rows show nearest levels above/below current price.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
@@ -462,16 +467,30 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_HDR_CORE].SetIntLimits(0, 0);
         sc.Input[IN_HDR_CORE].DisplayOrder = order++;
         
-        sc.Input[IN_BUTTON_NUM].Name = "Control Bar Button # (1-150)";
-        sc.Input[IN_BUTTON_NUM].SetInt(1);
-        sc.Input[IN_BUTTON_NUM].SetIntLimits(1, 150);
-        sc.Input[IN_BUTTON_NUM].DisplayOrder = order++;
+        sc.Input[IN_TABLE_BUTTON_NUM].Name = "Table Toggle Button # (0 = Disable)";
+        sc.Input[IN_TABLE_BUTTON_NUM].SetInt(1);
+        sc.Input[IN_TABLE_BUTTON_NUM].SetIntLimits(0, 150);
+        sc.Input[IN_TABLE_BUTTON_NUM].DisplayOrder = order++;
         
-        sc.Input[IN_BUTTON_TEXT].Name = "Button Text";
-        sc.Input[IN_BUTTON_TEXT].SetString("Levels");
-        sc.Input[IN_BUTTON_TEXT].DisplayOrder = order++;
+        sc.Input[IN_TABLE_BUTTON_TEXT].Name = "Table Button Text";
+        sc.Input[IN_TABLE_BUTTON_TEXT].SetString("Levels");
+        sc.Input[IN_TABLE_BUTTON_TEXT].DisplayOrder = order++;
 
-        sc.Input[IN_DISPLAY_MODE].Name = "Display Mode";
+        sc.Input[IN_LINE_BUTTON_NUM].Name = "Line Toggle Button # (0 = Disable)";
+        sc.Input[IN_LINE_BUTTON_NUM].SetInt(2);
+        sc.Input[IN_LINE_BUTTON_NUM].SetIntLimits(0, 150);
+        sc.Input[IN_LINE_BUTTON_NUM].DisplayOrder = order++;
+        
+        sc.Input[IN_LINE_BUTTON_TEXT].Name = "Line Button Text";
+        sc.Input[IN_LINE_BUTTON_TEXT].SetString("Lines");
+        sc.Input[IN_LINE_BUTTON_TEXT].DisplayOrder = order++;
+
+        sc.Input[IN_LINE_TYPE].Name = "Line Type (For Buttons/Fallback)";
+        sc.Input[IN_LINE_TYPE].SetCustomInputStrings("Short Line;Full Width");
+        sc.Input[IN_LINE_TYPE].SetCustomInputIndex(0);
+        sc.Input[IN_LINE_TYPE].DisplayOrder = order++;
+
+        sc.Input[IN_DISPLAY_MODE].Name = "Display Mode (Fallback if buttons = 0)";
         sc.Input[IN_DISPLAY_MODE].SetCustomInputStrings("Table Only;Table + Short Lines;Table + Full Lines;Short Lines Only;Full Lines Only");
         sc.Input[IN_DISPLAY_MODE].SetCustomInputIndex(1);
         sc.Input[IN_DISPLAY_MODE].DisplayOrder = order++;
@@ -602,8 +621,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         return;
     }
     
-    SCInputRef Input_ButtonNum = sc.Input[IN_BUTTON_NUM];
-    SCInputRef Input_ButtonText = sc.Input[IN_BUTTON_TEXT];
+    SCInputRef Input_TableBtnNum = sc.Input[IN_TABLE_BUTTON_NUM];
+    SCInputRef Input_TableBtnText = sc.Input[IN_TABLE_BUTTON_TEXT];
+    SCInputRef Input_LineBtnNum = sc.Input[IN_LINE_BUTTON_NUM];
+    SCInputRef Input_LineBtnText = sc.Input[IN_LINE_BUTTON_TEXT];
+    SCInputRef Input_LineType = sc.Input[IN_LINE_TYPE];
     SCInputRef Input_DisplayMode = sc.Input[IN_DISPLAY_MODE];
     SCInputRef Input_LabelFilters = sc.Input[IN_LABEL_FILTERS];
     SCInputRef Input_ChartConfig = sc.Input[IN_CHART_CONFIG];
@@ -641,58 +663,95 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.SetPersistentPointer(1, p_State);
     }
     
+    // Initial state if buttons are disabled (both 0)
+    if (!p_State->HasInitialized)
+    {
+        if (Input_TableBtnNum.GetInt() == 0 && Input_LineBtnNum.GetInt() == 0)
+        {
+            int displayMode = Input_DisplayMode.GetIndex();
+            p_State->IsTableVisible = (displayMode <= 2);
+            p_State->AreLinesVisible = (displayMode >= 1);
+        }
+        else
+        {
+            // If buttons are used, default to visible if a scan has occurred
+            p_State->IsTableVisible = p_State->HasScanned;
+            p_State->AreLinesVisible = p_State->HasScanned;
+        }
+        p_State->HasInitialized = true;
+    }
+
     // Button handling - TIME-BASED DEBOUNCE approach
-    static SCDateTime s_LastToggleTime = 0;
+    static SCDateTime s_LastTableToggle = 0;
+    static SCDateTime s_LastLineToggle = 0;
     static int s_StudyID = -1;
     
     if (s_StudyID != sc.StudyGraphInstanceID)
     {
         s_StudyID = sc.StudyGraphInstanceID;
-        s_LastToggleTime = 0;
+        s_LastTableToggle = 0;
+        s_LastLineToggle = 0;
     }
-    
-    int buttonNum = Input_ButtonNum.GetInt();
-    sc.SetCustomStudyControlBarButtonText(buttonNum, Input_ButtonText.GetString());
-    int buttonState = sc.GetCustomStudyControlBarButtonEnableState(buttonNum);
-    
-    bool runScan = false;
     
     SCDateTime now = sc.CurrentSystemDateTime;
-    double elapsedSeconds = 999.0;
-    if (now.IsDateSet() && s_LastToggleTime.IsDateSet())
+    bool runScan = false;
+
+    // Handle Table Button
+    int tableBtn = Input_TableBtnNum.GetInt();
+    if (tableBtn > 0)
     {
-        double diffDays = now.GetAsDouble() - s_LastToggleTime.GetAsDouble();
-        elapsedSeconds = diffDays * 86400.0;
+        sc.SetCustomStudyControlBarButtonText(tableBtn, Input_TableBtnText.GetString());
+        if (sc.GetCustomStudyControlBarButtonEnableState(tableBtn) == 1)
+        {
+            double elapsed = (now.GetAsDouble() - s_LastTableToggle.GetAsDouble()) * 86400.0;
+            if (elapsed > 0.5)
+            {
+                p_State->IsTableVisible = !p_State->IsTableVisible;
+                s_LastTableToggle = now;
+                if (p_State->IsTableVisible) runScan = true;
+                p_State->ForceRedraw = true;
+            }
+            sc.SetCustomStudyControlBarButtonEnable(tableBtn, 0);
+        }
     }
-    
-    if (buttonState == 1 && elapsedSeconds > 0.5)
+
+    // Handle Line Button
+    int lineBtn = Input_LineBtnNum.GetInt();
+    if (lineBtn > 0)
     {
-        p_State->IsTableVisible = !p_State->IsTableVisible;
-        s_LastToggleTime = now;
-        
-        if (p_State->IsTableVisible)
+        sc.SetCustomStudyControlBarButtonText(lineBtn, Input_LineBtnText.GetString());
+        if (sc.GetCustomStudyControlBarButtonEnableState(lineBtn) == 1)
         {
-            runScan = true;
-            p_State->ForceRedraw = true;
+            double elapsed = (now.GetAsDouble() - s_LastLineToggle.GetAsDouble()) * 86400.0;
+            if (elapsed > 0.5)
+            {
+                p_State->AreLinesVisible = !p_State->AreLinesVisible;
+                s_LastLineToggle = now;
+                if (p_State->AreLinesVisible) runScan = true;
+                p_State->ForceRedraw = true;
+            }
+            sc.SetCustomStudyControlBarButtonEnable(lineBtn, 0);
         }
-        else
-        {
-            // Table cleanup
-            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765432);
-            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765433);
-            p_State->LastHighIdx = -1;
-            p_State->LastLowIdx = -1;
-            p_State->LastPrice = 0;
-        }
-        sc.SetCustomStudyControlBarButtonEnable(buttonNum, 0);
     }
+
+    // Fallback logic if both buttons are 0
+    if (tableBtn == 0 && lineBtn == 0)
+    {
+        int displayMode = Input_DisplayMode.GetIndex();
+        p_State->IsTableVisible = (displayMode <= 2);
+        p_State->AreLinesVisible = (displayMode >= 1);
+    }
+
+    // Determine line drawing mode (0=Full, 1=Short)
+    int modeLineType = (Input_LineType.GetIndex() == 1) ? 0 : 1; 
     
-    // Determine visibility and modes from dropdown
-    // 0: "Table Only", 1: "Table + Short Lines", 2: "Table + Full Lines", 3: "Short Lines Only", 4: "Full Lines Only"
-    int displayMode = Input_DisplayMode.GetIndex();
-    bool modeShowTable = (displayMode <= 2);
-    bool modeShowLines = (displayMode >= 1);
-    int modeLineType = (displayMode == 2 || displayMode == 4) ? 0 : 1; // 0=Full, 1=Short
+    // Override line type if buttons are disabled to respect the legacy dropdown selection
+    if (tableBtn == 0 && lineBtn == 0)
+    {
+        int displayMode = Input_DisplayMode.GetIndex();
+        if (displayMode == 2 || displayMode == 4) modeLineType = 0; // Full
+        else if (displayMode == 1 || displayMode == 3) modeLineType = 1; // Short
+    }
 
     // Detect scroll/zoom changes for table tracking
     int currentFirstVisible = sc.IndexOfFirstVisibleBar;
@@ -702,9 +761,9 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         p_State->ForceRedraw = true;
     }
     
-    // Final visibility flags based on global toggle and display mode settings
-    bool showTable = modeShowTable && p_State->IsTableVisible;
-    bool showLines = modeShowLines && p_State->IsTableVisible;
+    // Final visibility flags
+    bool showTable = p_State->IsTableVisible;
+    bool showLines = p_State->AreLinesVisible;
     bool forceRedraw = p_State->ForceRedraw;
     
     DrawTable(sc, p_State, showTable, Input_TableX.GetInt(), Input_TableY.GetInt(),

@@ -23,14 +23,12 @@ To make a drawing discoverable by the Level Aggregator, you must follow a simple
 ## ⚙️ Configuration Settings
 
 ### 1. Core Settings
--   **Control Bar Button #**: The ID of the button (1-150) on your Sierra Chart Control Bar that will toggle the display on/off and trigger a fresh scan.
--   **Button Text**: The label shown on the Control Bar button (e.g., "Levels").
--   **Display Mode**: Determines how levels are shown:
-    -   **Table Only**: Shows the consolidated HUD table.
-    -   **Table + Short Lines**: Shows the table plus short lines on the right edge of the chart.
-    -   **Table + Full Lines**: Shows the table plus full-width horizontal lines.
-    -   **Short Lines Only**: No table, just short lines on the right edge.
-    -   **Full Lines Only**: No table, just full-width horizontal lines.
+-   **Table Toggle Button #**: The ID of the button (1-150) on your Sierra Chart Control Bar that will toggle the **HUD Table** visibility. Set to `0` to disable button control.
+-   **Table Button Text**: The label shown on the Control Bar button (e.g., "Levels").
+-   **Line Toggle Button #**: The ID of the button (1-150) that toggles the **Chart Lines** visibility. Set to `0` to disable button control.
+-   **Line Button Text**: The label shown on the line toggle button (e.g., "Lines").
+-   **Line Type**: Choose between **Short Line** (right-aligned) or **Full Width** horizontal lines.
+-   **Display Mode (Fallback)**: If both button numbers are set to `0`, the study uses this dropdown to determine what is shown (Always-On mode).
 -   **Target Labels**: A comma-separated list of labels to scan for. 
     -   Use `|All` suffix (e.g., `BZ|All`) to find every instance of that label across all charts. 
     -   Without `|All`, it only finds the *nearest* instance above or below the current price for that specific label.
@@ -47,18 +45,17 @@ To make a drawing discoverable by the Level Aggregator, you must follow a simple
 ### 3. Chart Line Settings
 -   **Line Style/Width/Color**: Customize the visual appearance of the aggregated lines.
 -   **Show Labels on Lines**: Toggles the `Description (Chart)` labels on the chart lines.
--   **Short Line Length (Bars)**: When using "Short Lines" modes, this dictates how many bars back from the right edge the line starts.
+-   **Short Line Length (Bars)**: When using "Short Line" mode, this dictates how many bars back from the right edge the line starts.
 
 ### 4. Sort Settings
 -   Multi-tier sorting support. You can sort by Price (Asc/Desc), Chart Priority, Label, or Description.
 
 ---
 
-## 📤 Export Features (Optional)
+## 🚀 Control & Fallback Logic
 
-The Level Aggregator can export its results to the **Clipboard** or a **File** every time a scan is triggered.
-
--   **Use Template**: You can provide a template file with markers like `{{PRICE}}`, `{{DESCRIPTION}}`, and `{{CHART_NAME}}` to generate custom-formatted lists (e.g., for import into other tools or for session notes).
+-   **Manual Control**: When button numbers are assigned (e.g., 1 and 2), you have independent control over the Table and the Lines. Pressing a button toggles its respective element and triggers a fresh scan.
+-   **Always-On (Fallback)**: If you set both button numbers to `0`, the study follows the **Display Mode** setting automatically. This is useful for fixed HUD setups that don't need manual toggling.
 
 ---
 
