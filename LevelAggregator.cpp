@@ -58,6 +58,7 @@ struct GlobalState
     bool ForceRedraw = false;
     int LastButtonState = 0;  // Track button state for edge detection
     int LastFirstVisibleBar = -1;  // Track scroll position
+    bool LastShowLines = false; // Track line visibility state
 };
 
 // Calculate highlight indices for nearest levels above/below price
@@ -80,6 +81,122 @@ void CalculateHighlights(const std::vector<LevelEntry>& levels, double currentPr
         {
             minDistLow = -diff;
             idxLow = (int)i;
+        }
+    }
+}
+
+void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines, 
+               int lineStyle, int lineWidth, COLORREF lineColor, bool showLabels,
+               int drawingMode, int shortLineBars, bool forceRedraw)
+{
+    const int baseLineID = 98765500;
+    const int maxLevels = 50; // Safety limit for on-chart lines
+
+    // If turned off or no scan yet, cleanup and exit
+    if (!showLines || !p_State->HasScanned || p_State->Levels.empty())
+    {
+        if (p_State->LastShowLines || forceRedraw)
+        {
+            for (int i = 0; i < maxLevels * 2; ++i)
+            {
+                sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, baseLineID + i);
+            }
+        }
+        p_State->LastShowLines = false;
+        return;
+    }
+
+    if (!forceRedraw && p_State->LastShowLines)
+        return;
+
+    p_State->LastShowLines = true;
+
+    int levelsToDraw = (int)p_State->Levels.size();
+    if (levelsToDraw > maxLevels) levelsToDraw = maxLevels;
+
+    for (int i = 0; i < maxLevels; ++i)
+    {
+        int lineID = baseLineID + (i * 2);
+        int labelID = baseLineID + (i * 2) + 1;
+
+        if (i >= levelsToDraw)
+        {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, lineID);
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, labelID);
+            continue;
+        }
+
+        const auto& level = p_State->Levels[i];
+
+        s_UseTool Tool;
+        Tool.Clear();
+        Tool.ChartNumber = sc.ChartNumber;
+        Tool.LineNumber = lineID;
+        Tool.BeginValue = level.Price;
+        Tool.EndValue = level.Price;
+        Tool.Color = lineColor;
+        Tool.LineWidth = lineWidth;
+        Tool.LineStyle = (SubgraphLineStyles)lineStyle;
+        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+
+        if (drawingMode == 0) // Full Chart Width
+        {
+            Tool.DrawingType = DRAWING_HORIZONTALLINE;
+        }
+        else // Right Edge Only
+        {
+            Tool.DrawingType = DRAWING_LINE;
+            int endIdx = sc.ArraySize - 1;
+            int startIdx = endIdx - shortLineBars;
+            if (startIdx < 0) startIdx = 0;
+            
+            Tool.BeginIndex = startIdx;
+            Tool.EndIndex = endIdx;
+            // Extend to the right edge of the chart (into the margin)
+            Tool.ExtendRight = 1;
+        }
+        sc.UseTool(Tool);
+
+        // Draw Label
+        if (showLabels)
+        {
+            s_UseTool Text;
+            Text.Clear();
+            Text.ChartNumber = sc.ChartNumber;
+            Text.LineNumber = labelID;
+            Text.DrawingType = DRAWING_TEXT;
+            
+            SCString labelStr;
+            if (level.Description.GetLength() > 0)
+                labelStr = level.Description;
+            else
+                labelStr = level.Label;
+
+            Text.Text = labelStr;
+            Text.BeginValue = level.Price;
+            Text.Color = lineColor;
+            Text.FontSize = 10; // Match table font or use a default
+            Text.TransparentLabelBackground = 1;
+
+            if (drawingMode == 0) // Full Width - Place near right edge
+            {
+                Text.BeginIndex = sc.ArraySize - 1;
+                Text.TextAlignment = DT_RIGHT | DT_BOTTOM;
+            }
+            else // Short Line - Place at the start of the line
+            {
+                int endIdx = sc.ArraySize - 1;
+                int startIdx = endIdx - shortLineBars;
+                if (startIdx < 0) startIdx = 0;
+                Text.BeginIndex = startIdx;
+                Text.TextAlignment = DT_LEFT | DT_BOTTOM;
+            }
+            Text.AddMethod = UTAM_ADD_OR_ADJUST;
+            sc.UseTool(Text);
+        }
+        else
+        {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, labelID);
         }
     }
 }
@@ -306,7 +423,17 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         IN_USE_TEMPLATE,
         IN_TEMPLATE_PATH,
         IN_INCLUDE_CHART_NAME,
-        IN_INCLUDE_DESCRIPTION
+        IN_INCLUDE_DESCRIPTION,
+        
+        // Chart Line Settings
+        IN_HDR_LINE_SETTINGS,
+        IN_SHOW_LINES,
+        IN_LINE_STYLE,
+        IN_LINE_WIDTH,
+        IN_LINE_COLOR,
+        IN_SHOW_LINE_LABELS,
+        IN_LINE_DRAWING_MODE,
+        IN_SHORT_LINE_BARS
     };
     
     if (sc.SetDefaults)
@@ -392,6 +519,44 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.Input[IN_HIGHLIGHT_COLOR].Name = "Highlight Color (Next High/Low)";
         sc.Input[IN_HIGHLIGHT_COLOR].SetColor(RGB(255, 255, 0));
         sc.Input[IN_HIGHLIGHT_COLOR].DisplayOrder = order++;
+
+        // ===== CHART LINE SETTINGS =====
+        sc.Input[IN_HDR_LINE_SETTINGS].Name = "===== CHART LINE SETTINGS =====";
+        sc.Input[IN_HDR_LINE_SETTINGS].SetInt(0);
+        sc.Input[IN_HDR_LINE_SETTINGS].SetIntLimits(0, 0);
+        sc.Input[IN_HDR_LINE_SETTINGS].DisplayOrder = order++;
+
+        sc.Input[IN_SHOW_LINES].Name = "Show Lines on Chart";
+        sc.Input[IN_SHOW_LINES].SetYesNo(0);
+        sc.Input[IN_SHOW_LINES].DisplayOrder = order++;
+
+        sc.Input[IN_LINE_STYLE].Name = "Line Style";
+        sc.Input[IN_LINE_STYLE].SetCustomInputStrings("Solid;Dash;Dot;DashDot;DashDotDot");
+        sc.Input[IN_LINE_STYLE].SetCustomInputIndex(0);
+        sc.Input[IN_LINE_STYLE].DisplayOrder = order++;
+
+        sc.Input[IN_LINE_WIDTH].Name = "Line Width";
+        sc.Input[IN_LINE_WIDTH].SetInt(1);
+        sc.Input[IN_LINE_WIDTH].SetIntLimits(1, 10);
+        sc.Input[IN_LINE_WIDTH].DisplayOrder = order++;
+
+        sc.Input[IN_LINE_COLOR].Name = "Line Color";
+        sc.Input[IN_LINE_COLOR].SetColor(RGB(255, 255, 255));
+        sc.Input[IN_LINE_COLOR].DisplayOrder = order++;
+
+        sc.Input[IN_SHOW_LINE_LABELS].Name = "Show Labels on Lines";
+        sc.Input[IN_SHOW_LINE_LABELS].SetYesNo(1);
+        sc.Input[IN_SHOW_LINE_LABELS].DisplayOrder = order++;
+
+        sc.Input[IN_LINE_DRAWING_MODE].Name = "Line Drawing Mode";
+        sc.Input[IN_LINE_DRAWING_MODE].SetCustomInputStrings("Full Chart Width;Right Edge Only (Short Line)");
+        sc.Input[IN_LINE_DRAWING_MODE].SetCustomInputIndex(0);
+        sc.Input[IN_LINE_DRAWING_MODE].DisplayOrder = order++;
+
+        sc.Input[IN_SHORT_LINE_BARS].Name = "Short Line Length (Bars)";
+        sc.Input[IN_SHORT_LINE_BARS].SetInt(20);
+        sc.Input[IN_SHORT_LINE_BARS].SetIntLimits(1, 500);
+        sc.Input[IN_SHORT_LINE_BARS].DisplayOrder = order++;
         
         // ===== SORT SETTINGS =====
         sc.Input[IN_HDR_SORT].Name = "===== SORT SETTINGS =====";
@@ -470,6 +635,15 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     SCInputRef Input_IncludeChartName = sc.Input[IN_INCLUDE_CHART_NAME];
     SCInputRef Input_IncludeDesc = sc.Input[IN_INCLUDE_DESCRIPTION];
     
+    // Line settings
+    SCInputRef Input_ShowLines = sc.Input[IN_SHOW_LINES];
+    SCInputRef Input_LineStyle = sc.Input[IN_LINE_STYLE];
+    SCInputRef Input_LineWidth = sc.Input[IN_LINE_WIDTH];
+    SCInputRef Input_LineColor = sc.Input[IN_LINE_COLOR];
+    SCInputRef Input_ShowLineLabels = sc.Input[IN_SHOW_LINE_LABELS];
+    SCInputRef Input_LineDrawingMode = sc.Input[IN_LINE_DRAWING_MODE];
+    SCInputRef Input_ShortLineBars = sc.Input[IN_SHORT_LINE_BARS];
+    
     // Manage persistent state
     GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
     if (p_State == NULL)
@@ -530,10 +704,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
         sc.SetCustomStudyControlBarButtonEnable(buttonNum, 0);
     }
     
-    // Early exit if table is hidden and no scan needed - minimize CPU usage
-    if (!p_State->IsTableVisible && !runScan)
-        return;
-    
     // Detect scroll/zoom changes so the table position keeps up with
     // the chart as you pan. We only force a redraw when the first
     // visible bar actually moves.
@@ -546,16 +716,30 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     
     // Draw table (respects change detection)
     bool showTable = Input_ShowTable.GetYesNo() && p_State->IsTableVisible;
+    bool showLines = Input_ShowLines.GetYesNo();
     bool forceRedraw = p_State->ForceRedraw;
-    p_State->ForceRedraw = false;
+    // Note: p_State->ForceRedraw is reset at the end of scan logic or here if no scan
     
     DrawTable(sc, p_State, showTable, Input_TableX.GetInt(), Input_TableY.GetInt(),
               Input_FontSize.GetInt(), Input_FontColor.GetColor(), 
               Input_BgColor.GetColor(), Input_HighlightColor.GetColor(),
               Input_TableRangeLevels.GetInt(), forceRedraw);
-    
-    if (!runScan) 
+
+    DrawLines(sc, p_State, showLines, Input_LineStyle.GetIndex(), Input_LineWidth.GetInt(),
+              Input_LineColor.GetColor(), Input_ShowLineLabels.GetYesNo(),
+              Input_LineDrawingMode.GetIndex(), Input_ShortLineBars.GetInt(), forceRedraw);
+
+    if (!runScan && !p_State->ForceRedraw)
+    {
+        p_State->ForceRedraw = false;
         return;
+    }
+
+    if (!runScan && p_State->ForceRedraw)
+    {
+         p_State->ForceRedraw = false;
+         return;
+    }
     
     // --- SCAN LOGIC ---
     
