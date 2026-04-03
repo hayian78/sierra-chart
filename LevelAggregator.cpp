@@ -1017,8 +1017,8 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc)
     p_State->ForceRedraw = true;
     
     // Force immediate draw based on current visibility state
-    showTable = modeShowTable && p_State->IsTableVisible;
-    showLines = modeShowLines && p_State->IsTableVisible;
+    showTable = p_State->IsTableVisible;
+    showLines = p_State->AreLinesVisible;
 
     DrawTable(sc, p_State, showTable, Input_TableX.GetInt(), Input_TableY.GetInt(),
               Input_FontSize.GetInt(), Input_FontColor.GetColor(), 
