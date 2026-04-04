@@ -51,6 +51,7 @@ Project Integration
 Specialist in building tools like Level Aggregators and Cost Basis Discovery Engines, focusing on how these studies interact with other indicators on the same chart.
 ---
 ⚔️ Coding Rules for Gemini
+Surgical Modifications Only (CRITICAL): NEVER rewrite entire large files from memory using `write_file`. This causes truncation, deletes parameter lists, and breaks UI configurations. Always use the `replace` tool for targeted, surgical updates. Read the file first to anchor your changes correctly.
 Code Only What’s Needed: Provide the `scsf_` function and the `sc.SetCustomStudyName` block. Skip the boilerplate unless requested.
 Safety Checks: Always include a check for `sc.ArraySize < 1` at the start of the study to prevent crashes on empty charts.
 Modern C++ Standards: Use `auto`, `const`, and struct initialization where appropriate, but ensure compatibility with the Sierra Chart compiler (MinGW/MSVC).

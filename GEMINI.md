@@ -40,6 +40,10 @@ When modifying or expanding these studies, adhere to the following principles:
    - Default to `sc.AutoLoop = 0` (Manual Looping) to securely handle historical accumulation, caching inputs appropriately before the main data loop, and restrict costly UI checks or string manipulations to fresh ticks only or specifically isolated user-actions (like button clicks).
 4. **Drawing and Tool Cleanup**: 
    - Always provide correct line numbers and cleanup paths for `sc.UseTool` objects (like text/tables) to avoid memory leaks or visual artifact ghosting.
+5. **Code Modification Mandate (CRITICAL ANTI-CORRUPTION RULE)**:
+   - **Never rewrite large files (e.g., >500 lines) from memory using `write_file`.** This inevitably leads to LLM output truncation, resulting in deleted parameter lists (`sc.SetDefaults`), missing logic, and broken UI configurations.
+   - **Always use `replace`** for targeted, surgical updates.
+   - Before modifying a file, read the relevant sections to ensure you are anchoring your `replace` blocks to the exact current codebase, preserving all surrounding logic and inputs.
 
 ## Previous Context & Known Areas for Focus
 - Ensure adaptive logic aligns dynamically with the "Point in Time" capabilities when testing execution paths.
