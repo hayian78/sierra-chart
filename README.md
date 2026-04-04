@@ -59,6 +59,13 @@ A collection of high-performance, custom ACSIL (Advanced Custom Study Interface 
 - **Features**:
   - Exports chart data, levels, and notes directly into Obsidian-compatible markdown formats.
 
+### 9. DOM Account Visualizer (`DOMAccountVisualizer.cpp`)
+- **Intent**: High-visibility safety overlay for Trading DOMs to prevent SIM/LIVE execution errors.
+- **Features**:
+  - **Zero-Lag Gating**: REDRAW logic only executes on account or window size changes, ensuring 0% CPU impact during active scalping.
+  - **Peripheral Awareness**: Dual 6px pillars and a perimeter border provide 360-degree awareness of the active mode.
+  - **Dynamic Detection**: Customizable keywords for SIM/LIVE detection with independent color and label configurations.
+
 ---
 
 ## 🛠 Engineering Guidelines
