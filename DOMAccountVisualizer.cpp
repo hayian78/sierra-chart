@@ -1,7 +1,6 @@
 #include "sierrachart.h"
-#include <string>
-#include <vector>
-#include <sstream>
+#include <cstring>
+#include <cctype>
 
 /*============================================================================
     DOM Account Visualizer - Sierra Chart Study
@@ -10,8 +9,8 @@
              account (SIM vs LIVE) directly on the Trading DOM.
     
     Optimized for ES/MES Scalping:
-    - Zero-Lag Engine: REDRAW logic is gated by account/window state changes.
-    - Screen-Space Layout: UI elements are pinned to window edges (0% drift).
+    - Zero-Lag Engine: REDRAW logic is gated by account/scroll state changes.
+    - Fast Exit: Function returns immediately if no state change detected.
     - Tactical Awareness: Dual pillars and perimeter border for peripheral vision.
 ============================================================================*/
 
@@ -19,50 +18,63 @@ SCDLLName("DOM Account Visualizer")
 
 struct GlobalState {
     SCString LastAccount;
-    int LastWidth = 0;
-    int LastHeight = 0;
-    bool LastIsSim = true;
-    bool Initialized = false;
+    int LastFirstBar;
+    int LastLastBar;
+    bool IsSim;
+    bool Initialized;
+
+    GlobalState() : LastFirstBar(-1), LastLastBar(-1), IsSim(true), Initialized(false) {}
 };
 
 // Helper: Case-insensitive search for keywords in CSV string
-bool ContainsKeyword(const SCString& account, const SCString& keywords) {
-    if (account.IsEmpty() || keywords.IsEmpty()) return false;
-    
-    std::string acctStr = account.GetChars();
-    for (auto & c: acctStr) c = (char)tolower(c);
+bool ContainsKeyword(const char* account, const char* keywords) {
+    if (!account || !keywords || account[0] == '\0' || keywords[0] == '\0') return false;
 
-    std::stringstream ss(keywords.GetChars());
-    std::string segment;
-    while (std::getline(ss, segment, ',')) {
-        // Trim whitespace from segment
-        segment.erase(0, segment.find_first_not_of(" "));
-        segment.erase(segment.find_last_not_of(" ") + 1);
-        if (segment.empty()) continue;
+    char lowerAccount[256];
+    int i = 0;
+    for (; account[i] != '\0' && i < 255; ++i) {
+        lowerAccount[i] = (char)tolower(account[i]);
+    }
+    lowerAccount[i] = '\0';
 
-        for (auto & c: segment) c = (char)tolower(c);
-        if (acctStr.find(segment) != std::string::npos) return true;
+    char lowerKeywords[512];
+    int j = 0;
+    for (; keywords[j] != '\0' && j < 511; ++j) {
+        lowerKeywords[j] = (char)tolower(keywords[j]);
+    }
+    lowerKeywords[j] = '\0';
+
+    char* start = lowerKeywords;
+    while (*start) {
+        char* end = strchr(start, ',');
+        if (end) *end = '\0';
+        while (*start == ' ') start++;
+        int len = (int)strlen(start);
+        if (len > 0) {
+            char* t = start + len - 1;
+            while (t >= start && *t == ' ') { *t = '\0'; t--; }
+        }
+        if (*start != '\0' && strstr(lowerAccount, start)) return true;
+        if (end) start = end + 1;
+        else break;
     }
     return false;
 }
 
 SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
     enum InputIdx {
-        IN_LIVE_KEYWORDS = 0,
-        IN_SIM_KEYWORDS,
-        IN_LIVE_LABEL,
-        IN_SIM_LABEL,
-        IN_LIVE_COLOR,
-        IN_SIM_COLOR,
-        IN_PILLAR_WIDTH,
-        IN_BORDER_WIDTH,
-        IN_FONT_SIZE,
-        IN_TRANSPARENCY,
-        IN_FALLBACK
+        IN_LIVE_KEYWORDS = 0, IN_SIM_KEYWORDS, IN_LIVE_LABEL, IN_SIM_LABEL,
+        IN_LIVE_COLOR, IN_SIM_COLOR, IN_PILLAR_WIDTH_BARS, IN_BORDER_WIDTH,
+        IN_FONT_SIZE, IN_TRANSPARENCY, IN_FALLBACK
     };
 
     if (sc.SetDefaults) {
         sc.GraphName = "DOM Account Visualizer";
+        sc.StudyDescription = 
+            "High-visibility safety overlay for Trading DOMs to prevent SIM/LIVE execution errors.\n\n"
+            "DETECTION: Automatically checks account name against keywords (CSV).\n"
+            "PERFORMANCE: Zero-Lag gating engine ensures 0% CPU impact when idle.\n"
+            "VISUALS: Perimeter border, dual edge pillars, and top HUD text.";
         sc.AutoLoop = 0;
         sc.UpdateAlways = 1;
         sc.GraphRegion = 0;
@@ -85,10 +97,10 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
         sc.Input[IN_SIM_COLOR].Name = "Sim Mode Color";
         sc.Input[IN_SIM_COLOR].SetColor(RGB(0, 255, 255));
 
-        sc.Input[IN_PILLAR_WIDTH].Name = "Edge Pillar Width (Pixels)";
-        sc.Input[IN_PILLAR_WIDTH].SetInt(6);
+        sc.Input[IN_PILLAR_WIDTH_BARS].Name = "Edge Pillar Width (Bars)";
+        sc.Input[IN_PILLAR_WIDTH_BARS].SetInt(1);
 
-        sc.Input[IN_BORDER_WIDTH].Name = "Perimeter Border Width (Pixels)";
+        sc.Input[IN_BORDER_WIDTH].Name = "Perimeter Border Width";
         sc.Input[IN_BORDER_WIDTH].SetInt(2);
 
         sc.Input[IN_FONT_SIZE].Name = "HUD Font Size";
@@ -104,100 +116,66 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
         return;
     }
 
+    if (sc.LastCallToFunction) {
+        GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
+        if (p_State) { 
+            delete p_State; 
+            sc.SetPersistentPointer(1, NULL); 
+        }
+        return;
+    }
+
     GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
     if (!p_State) {
         p_State = new GlobalState;
         sc.SetPersistentPointer(1, p_State);
     }
 
-    // --- DETECTION LOGIC ---
     SCString CurrentAccount = sc.SelectedTradeAccount;
-    bool IsSim = (sc.Input[IN_FALLBACK].GetIndex() == 0); // Default based on fallback
+    int firstBar = sc.IndexOfFirstVisibleBar;
+    int lastBar = sc.IndexOfLastVisibleBar;
 
-    if (ContainsKeyword(CurrentAccount, sc.Input[IN_SIM_KEYWORDS].GetString())) {
-        IsSim = true;
-    } else if (ContainsKeyword(CurrentAccount, sc.Input[IN_LIVE_KEYWORDS].GetString())) {
-        IsSim = false;
-    }
-
-    // --- GATING ENGINE (Zero-Lag) ---
     bool accountChanged = (CurrentAccount != p_State->LastAccount);
-    bool windowResized = (sc.ChartWidth != p_State->LastWidth || sc.ChartHeight != p_State->LastHeight);
-    bool modeChanged = (IsSim != p_State->LastIsSim);
+    bool scrollChanged = (firstBar != p_State->LastFirstBar || lastBar != p_State->LastLastBar);
+    bool shouldRecalculate = (sc.IsFullRecalculation || !p_State->Initialized);
 
-    if (!accountChanged && !windowResized && !modeChanged && p_State->Initialized && !sc.IsFullRecalculation) {
-        return; // Fast exit - CPU stays at 0%
+    if (!accountChanged && !scrollChanged && !shouldRecalculate) return;
+
+    if (accountChanged || shouldRecalculate) {
+        p_State->IsSim = (sc.Input[IN_FALLBACK].GetIndex() == 0);
+        const char* accStr = CurrentAccount.GetChars();
+        if (ContainsKeyword(accStr, sc.Input[IN_SIM_KEYWORDS].GetString())) p_State->IsSim = true;
+        else if (ContainsKeyword(accStr, sc.Input[IN_LIVE_KEYWORDS].GetString())) p_State->IsSim = false;
+        p_State->LastAccount = CurrentAccount;
     }
 
-    // Update state cache
-    p_State->LastAccount = CurrentAccount;
-    p_State->LastWidth = sc.ChartWidth;
-    p_State->LastHeight = sc.ChartHeight;
-    p_State->LastIsSim = IsSim;
+    p_State->LastFirstBar = firstBar;
+    p_State->LastLastBar = lastBar;
     p_State->Initialized = true;
 
-    // --- VISUALS ---
-    COLORREF color = IsSim ? sc.Input[IN_SIM_COLOR].GetColor() : sc.Input[IN_LIVE_COLOR].GetColor();
-    SCString label = IsSim ? sc.Input[IN_SIM_LABEL].GetString() : sc.Input[IN_LIVE_LABEL].GetString();
-    int pillarWidth = sc.Input[IN_PILLAR_WIDTH].GetInt();
-    int borderWidth = sc.Input[IN_BORDER_WIDTH].GetInt();
-    int transparency = sc.Input[IN_TRANSPARENCY].GetInt();
+    COLORREF color = p_State->IsSim ? sc.Input[IN_SIM_COLOR].GetColor() : sc.Input[IN_LIVE_COLOR].GetColor();
+    SCString label = p_State->IsSim ? sc.Input[IN_SIM_LABEL].GetString() : sc.Input[IN_LIVE_LABEL].GetString();
 
     s_UseTool Tool;
     Tool.Clear();
     Tool.ChartNumber = sc.ChartNumber;
     Tool.AddMethod = UTAM_ADD_OR_ADJUST;
-    Tool.UseScreenCoordinates = 1;
-    Tool.FillStyle = FILL_SOLID;
-    Tool.TransparencyLevel = transparency;
-
-    // 1. Perimeter Border (Using DRAWING_RECTANGLEHIGHLIGHT for better overlay behavior)
-    Tool.LineNumber = 10001;
-    Tool.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
-    Tool.BeginLinePixelX = 0;
-    Tool.BeginLinePixelY = 0;
-    Tool.EndLinePixelX = sc.ChartWidth;
-    Tool.EndLinePixelY = sc.ChartHeight;
+    Tool.UseRelativeVerticalValues = 1;
+    Tool.TransparencyLevel = sc.Input[IN_TRANSPARENCY].GetInt();
     Tool.Color = color;
-    Tool.SecondaryColor = color;
-    Tool.LineWidth = borderWidth;
-    sc.UseTool(Tool);
 
-    // 2. Left Edge Pillar
-    Tool.LineNumber = 10002;
-    Tool.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
-    Tool.BeginLinePixelX = 0;
-    Tool.BeginLinePixelY = 0;
-    Tool.EndLinePixelX = pillarWidth;
-    Tool.EndLinePixelY = sc.ChartHeight;
-    Tool.Color = color;
-    Tool.SecondaryColor = color;
-    Tool.LineWidth = 1; 
-    sc.UseTool(Tool);
+    // Borders (Horizontal)
+    Tool.LineNumber = 10001; Tool.DrawingType = DRAWING_HORIZONTALLINE; Tool.BeginValue = 100; Tool.LineWidth = sc.Input[IN_BORDER_WIDTH].GetInt(); sc.UseTool(Tool);
+    Tool.LineNumber = 10002; Tool.BeginValue = 0; sc.UseTool(Tool);
 
-    // 3. Right Edge Pillar
-    Tool.LineNumber = 10003;
-    Tool.DrawingType = DRAWING_RECTANGLEHIGHLIGHT;
-    Tool.BeginLinePixelX = sc.ChartWidth - pillarWidth;
-    Tool.BeginLinePixelY = 0;
-    Tool.EndLinePixelX = sc.ChartWidth;
-    Tool.EndLinePixelY = sc.ChartHeight;
-    Tool.Color = color;
-    Tool.SecondaryColor = color;
-    Tool.LineWidth = 1;
-    sc.UseTool(Tool);
+    // Pillars (Vertical)
+    Tool.DrawingType = DRAWING_VERTICALLINE;
+    Tool.LineWidth = sc.Input[IN_PILLAR_WIDTH_BARS].GetInt() * 10; // Scaled for visibility on DOM
+    Tool.LineNumber = 10003; Tool.BeginIndex = firstBar; sc.UseTool(Tool);
+    Tool.LineNumber = 10004; Tool.BeginIndex = lastBar; sc.UseTool(Tool);
 
-    // 4. HUD Text Label
-    Tool.LineNumber = 10004;
-    Tool.DrawingType = DRAWING_TEXT;
-    Tool.BeginLinePixelX = pillarWidth + 10;
-    Tool.BeginLinePixelY = 10;
-    Tool.Text = label;
-    Tool.FontSize = sc.Input[IN_FONT_SIZE].GetInt();
-    Tool.FontBold = 1;
-    Tool.Color = color;
-    Tool.BackgroundFill = 1;
-    Tool.TextBackgroundColor = RGB(0, 0, 0); // Black background for text contrast
-    Tool.TransparencyLevel = transparency;
+    // HUD Text
+    Tool.LineNumber = 10005; Tool.DrawingType = DRAWING_TEXT; Tool.BeginIndex = firstBar; Tool.BeginValue = 95; Tool.Text = label;
+    Tool.FontSize = sc.Input[IN_FONT_SIZE].GetInt(); Tool.FontBold = 1; Tool.TransparentLabelBackground = 0; Tool.FontBackColor = RGB(0, 0, 0);
     sc.UseTool(Tool);
 }
