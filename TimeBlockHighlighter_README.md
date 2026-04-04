@@ -1,6 +1,6 @@
 # Time Block Highlighter — User Guide
 
-**Version:** 2.0.0  
+**Version:** 2.1.0  
 **Platform:** Sierra Chart (ACSIL Custom Study)  
 **DLL Name:** `TimeBlockHighlighter`  
 **Study Name:** Time Block Highlighter  
@@ -11,12 +11,12 @@
 
 The **Time Block Highlighter** is a high-performance visual aid for Sierra Chart that provides clear, professional-grade session highlights (banners) at the top or bottom of your chart. It is designed to help traders immediately identify key market periods (like RTH or Globex) and visualize upcoming sessions before they begin.
 
-### Key Features (v2.0.0)
+### Key Features (v2.1.0)
 
 - **Professional Banners** — Renders clean, labeled rectangles that act as headers for your trading sessions.
 - **Forward Projection** — Active sessions dynamically extend into the future blank space, ending precisely at their scheduled close.
 - **Upcoming Previews** — Pre-draws the next session (e.g., "See RTH coming up in 60 minutes") into the right-side blank space.
-- **Floating Labels** — Smart label logic ensures session titles (e.g., "Globex") stay visible on your screen as you scroll or as new bars arrive.
+- **Lazy Sticky Edge Labels** — **NEW:** Optimized label logic ensures session titles stay visible while you scroll, using a 30-bar quantized snap to eliminate micro-stuttering.
 - **Future Time Ticks** — Projects your local time intervals into the future banner space for a complete timeline view.
 - **Time Markers** — Add vertical lines with custom labels at specific times (e.g., "9:30|Open").
 
@@ -24,7 +24,7 @@ The **Time Block Highlighter** is a high-performance visual aid for Sierra Chart
 
 ## Installation
 
-1. Place `TimeBlockHighlighter.cpp` into your Sierra Chart **Data** folder.
+1. Place `TimeBlockHighlighter.cpp` into your Sierra Chart **ACS_Source** folder.
 2. In Sierra Chart, go to **Analysis → Build Custom Studies DLL** to compile.
 3. Add the study to your chart via **Analysis → Studies → Add Custom Study → Time Block Highlighter**.
 
@@ -56,29 +56,24 @@ The **Time Block Highlighter** is a high-performance visual aid for Sierra Chart
 
 ---
 
-## Professional UX Features
+## Institutional Performance ("Zero-Lag" Engine)
 
-### Floating Labels
-In standard studies, session labels often disappear if the midpoint of the session is off-screen. This study uses **Floating Label Logic**: the title will "slide" along the banner to stay centered within your *visible* chart range, ensuring you always know which session you are looking at.
+This study is engineered specifically for ES/MES scalpers who require zero interference with their charting frame rate:
 
-### Time Markers
-You can define a list of specific times to mark with vertical lines and labels using the following format:  
-`HH:MM|Label|Color` (e.g., `09:30|Open|Yellow, 10:00|IB High|Cyan`).
-
-### Future Time Ticks
-When enabled, the study will calculate and draw local time labels (e.g., "19:00", "20:00") directly inside the banner, even in the future projections where no bars yet exist.
-
----
-
-## Performance Notes
-
-- **Stable Rendering Mode** — Recommended for most users; ensures drawings stay perfectly aligned during fast price action.
-- **Incremental Update Mode** — Optimized to process only new bars as they arrive, significantly reducing CPU load on high-volume tick charts.
-- **Hash Caching** — The study only redraws when settings or the visible range change, preventing redundant GPU calls.
+-   **O(Sessions) Jump Logic**: Replaced linear bar-by-bar scanning with a time-based jump strategy. The study "jumps" directly to session boundaries, making historical processing instantaneous even on charts with 500+ days of data.
+-   **State-Change Gating**: A high-performance hash check ensures the study exits immediately at the top of the function if no settings or scroll positions have changed. Redraws consume **0% CPU** during idle market periods.
+-   **Lazy Redraws**: By snap-anchoring labels every 30 bars, the study avoids redundant UI calls on every single pixel of scroll, preserving your GPU resources for order flow data.
+-   **Daily Caching**: Day-of-week and date calculations are performed once per day instead of once per bar, minimizing expensive `SCDateTime` method calls.
 
 ---
 
 ## Changelog
+
+### v2.1.0 — 2026-04-04
+- **Performance Overhaul**: Implemented $O(Sessions)$ Jump Logic for instantaneous historical scanning.
+- **Micro-Stutter Fix**: Introduced "Lazy Sticky Edge" labels with 30-bar quantized anchoring.
+- **Zero-Lag Gating**: Added hash-based state gating to eliminate CPU load when idle.
+- **Daily Caching**: Optimized `SCDateTime` handling within the core execution loops.
 
 ### v2.0.0 — 2026-04-02
 - **Major UX Update**: Added Forward Projections for active sessions.
