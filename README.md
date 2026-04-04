@@ -65,6 +65,7 @@ A collection of high-performance, custom ACSIL (Advanced Custom Study Interface 
   - **Zero-Lag Gating**: REDRAW logic only executes on account or window size changes, ensuring 0% CPU impact during active scalping.
   - **Peripheral Awareness**: Dual 6px pillars and a perimeter border provide 360-degree awareness of the active mode.
   - **Dynamic Detection**: Customizable keywords for SIM/LIVE detection with independent color and label configurations.
+- **Detailed Guide**: [DOM Account Visualizer Guide](DOMAccountVisualizer_README.md)
 
 ---
 
