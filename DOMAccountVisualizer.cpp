@@ -64,7 +64,7 @@ bool ContainsKeyword(const char* account, const char* keywords) {
 SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
     enum InputIdx {
         IN_LIVE_KEYWORDS = 0, IN_SIM_KEYWORDS, IN_LIVE_LABEL, IN_SIM_LABEL,
-        IN_LIVE_COLOR, IN_SIM_COLOR, IN_PILLAR_WIDTH_BARS, IN_BORDER_WIDTH,
+        IN_LIVE_COLOR, IN_SIM_COLOR, IN_PILLAR_WIDTH_BARS, IN_PILLAR_VISIBILITY, IN_BORDER_WIDTH,
         IN_FONT_SIZE, IN_TRANSPARENCY, IN_FALLBACK
     };
 
@@ -74,7 +74,7 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
             "High-visibility safety overlay for Trading DOMs to prevent SIM/LIVE execution errors.\n\n"
             "DETECTION: Automatically checks account name against keywords (CSV).\n"
             "PERFORMANCE: Zero-Lag gating engine ensures 0% CPU impact when idle.\n"
-            "VISUALS: Perimeter border, dual edge pillars, and top HUD text.";
+            "VISUALS: Perimeter border, edge pillars (configurable), and top HUD text.";
         sc.AutoLoop = 0;
         sc.UpdateAlways = 1;
         sc.GraphRegion = 0;
@@ -99,6 +99,10 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
 
         sc.Input[IN_PILLAR_WIDTH_BARS].Name = "Edge Pillar Width (Bars)";
         sc.Input[IN_PILLAR_WIDTH_BARS].SetInt(1);
+
+        sc.Input[IN_PILLAR_VISIBILITY].Name = "Pillar Visibility Mode";
+        sc.Input[IN_PILLAR_VISIBILITY].SetCustomInputStrings("Left;Right;Both");
+        sc.Input[IN_PILLAR_VISIBILITY].SetCustomInputIndex(2);
 
         sc.Input[IN_BORDER_WIDTH].Name = "Perimeter Border Width";
         sc.Input[IN_BORDER_WIDTH].SetInt(2);
@@ -171,8 +175,14 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
     // Pillars (Vertical)
     Tool.DrawingType = DRAWING_VERTICALLINE;
     Tool.LineWidth = sc.Input[IN_PILLAR_WIDTH_BARS].GetInt() * 10; // Scaled for visibility on DOM
-    Tool.LineNumber = 10003; Tool.BeginIndex = firstBar; sc.UseTool(Tool);
-    Tool.LineNumber = 10004; Tool.BeginIndex = lastBar; sc.UseTool(Tool);
+    int pillarMode = sc.Input[IN_PILLAR_VISIBILITY].GetIndex();
+    if (pillarMode == 0 || pillarMode == 2) { // Left or Both
+        Tool.LineNumber = 10003; Tool.BeginIndex = firstBar; sc.UseTool(Tool);
+    } else sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 10003);
+
+    if (pillarMode == 1 || pillarMode == 2) { // Right or Both
+        Tool.LineNumber = 10004; Tool.BeginIndex = lastBar; sc.UseTool(Tool);
+    } else sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 10004);
 
     // HUD Text
     Tool.LineNumber = 10005; Tool.DrawingType = DRAWING_TEXT; Tool.BeginIndex = firstBar + 1; Tool.BeginValue = 95;
