@@ -1,55 +1,25 @@
-# Balance Zone Projector: Auto-Extend Feature Guide
+# Balance Zone Engine - User Guide
 
 ## Overview
-The **Auto-Extend** feature allows the *most recent* Balance Zone anchor to automatically extend its projected zones (and the anchor zone itself) to the right edge of the chart (current bar + 5 bars). This eliminates the need to manually drag the right edge of your anchor rectangle as new bars form, ensuring your levels are always visible in real-time.
-
-## Key Features
-
-### 1. Automatic Extension
-*   **Target:** Only the **latest** anchor (the one furthest to the right) is extended.
-*   **Behavior:** The study detects the latest anchor and artificially projects its zones forward to the current time, regardless of where the anchor's actual rectangle ends.
-*   **Visuals:** 
-    *   The **Projected Zones** (x2, x4, etc.) extend to the far right.
-    *   The **Anchor Zone** (Cost Basis) itself is visually extended to the far right.
-    *   The **Midline** (if enabled on the anchor) is also extended to the far right.
-
-### 2. Seamless Integration
-*   **Native Midline Support:** If your anchor rectangle has the generic "Midline" option enabled in Sierra Chart (Study Settings -> "Draw Midline" or via the drawing tool config), the Auto-Extend feature detects this and draws a matching midline through the extended area.
-*   **Updates:** As new bars arrive, the extension updates automatically without user intervention.
+> Projects balance and premium/discount zones derived from user-defined anchor rectangles. It allows on-the-fly dynamic zone configuration via chart drawing text labels to adjust up/down multipliers.
 
 ---
 
-## Configuration & Usage
+## Configuration (Study Inputs)
+| Input Name | Type | Recommended Value | Description |
+| :--- | :--- | :--- | :--- |
+| **Anchor Rectangle Label Text(s)** | String | `BZ` | Comma-separated base labels to match from user-drawn rectangles. |
+| **Auto-Extend Latest Anchor Mode** | Dropdown | `Control Bar Button` | Determines if the most recent anchor automatically extends its zones to the right edge of the chart. |
+| **Auto-Extend Button ID** | Integer | `1` | Button ID for the Custom Study Control Bar to toggle the Auto-Extend feature. |
+| **Enable Up / Down Projections** | Yes/No | `Yes` | Master switch to enable or disable projections in the respective directions. |
+| **Max Up / Down Zone Groups** | Integer | `4` | Limits the number of generated zone groups (0 to 4). |
 
-### Enabling the Feature
-In the **Study Settings** for the Balance Zone Engine, look for the following inputs:
+## Operational Use
+* **Visual Cues:** Draws detailed balance zones above and below an anchor rectangle based on the anchor's text (e.g., `BZ +2,-4`). Extended zones automatically project to the right edge if auto-extend is enabled.
+* **Hotkeys:** Use the specified **Auto-Extend Button ID** on the Sierra Chart Custom Study Control Bar to quickly toggle the extension of the latest anchor.
+* **Limitations:** Requires Sierra Chart v2813+. Overriding multipliers via text requires exact syntax (e.g., `BZ +6x,-2x`).
 
-#### `Auto-Extend Mode`
-1.  **Disabled:** Standard behavior. Zones stop exactly where you draw the anchor rectangle.
-2.  **Always Enabled:** The latest anchor is *always* auto-extended.
-3.  **Control Bar Button:** The feature is toggled on/off via a button on the Custom Study Control Bar.
-
-#### `Auto-Extend Button ID`
-*   **Description:** Specifies which button on the **Custom Study Control Bar** will toggle the feature.
-*   **Value:** Enter a number (e.g., `1` for Button 1, `5` for Button 5).
-*   **Note:** You must enable the Custom Study Control Bar in Sierra Chart (`Window` -> `Control Bars` -> `Custom Study Control Bar`) to see and use this button.
-
-### Using the Control Bar Button
-If you select **Control Bar Button** mode:
-*   **Click the button** to toggle Auto-Extend ON or OFF.
-*   **Button Text:** The button label will update dynamically to show the current state:
-    *   `BZ Ext: ON`
-    *   `BZ Ext: OFF`
-
----
-
-## Frequently Asked Questions
-
-**Q: Why isn't my anchor extending?**
-*   **A:** Ensure it is the *latest* anchor on the chart (furthest to the right). Older anchors are not extended to keep the chart clean.
-
-**Q: My anchor has a midline, but the extension doesn't.**
-*   **A:** Ensure the "Draw Midline" option is enabled on the **Anchor Rectangle** itself (Right-click anchor -> Settings -> "Draw Midline" = Yes). The study mirrors the anchor's own settings.
-
-**Q: I see "BZ Ext: Disabled" on the button.**
-*   **A:** This means the `Auto-Extend Mode` input is set to "Disabled" or "Always Enabled". Change it to "Control Bar Button" to enable toggling.
+## Developer Notes (ACSIL)
+* **DLL Name:** `Balance Zone Engine`
+* **Build Requirements:** MSVC 2022+ / x64.
+* **Performance:** `sc.AutoLoop = 0` and `sc.UpdateAlways = 1`. High-performance design explicitly filters and processes only on-screen anchors to optimize rendering. State persistence relies on `sc.GetPersistentPointer`.

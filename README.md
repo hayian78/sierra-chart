@@ -1,91 +1,62 @@
-# Sierra Chart Quantitative Studies
+# Sierra Chart Quantitative Studies - Master Index
 
-A collection of high-performance, custom ACSIL (Advanced Custom Study Interface and Language) studies for Sierra Chart, focusing on quantitative level generation, volume-weighted metrics, balance projection, and automated chart management.
-
-## 🚀 Core Studies
-
-### 1. Daily AVWAP (`DailyAVWAP.cpp`)
-- **Intent**: Computes an anchored Volume Weighted Average Price (VWAP) that resets daily at a configurable time (e.g., 17:00 ET).
-- **Features**: 
-  - Precision standard deviation bands (±0.5, ±1.0, ±1.5, ±2.0, ±3.0).
-  - High-performance manual loop calculation using double-precision accumulators.
-  - Zero-volume bar gap handling (carries forward previous values without skewing averages).
-  - Built-in crossover alerts with per-bar deduplication.
-
-### 2. Balance Zone Engine (`BalanceZoneEngine.cpp`)
-- **Intent**: Projects dynamic balance and premium/discount zones derived from user-drawn anchor rectangles.
-- **Features**: 
-  - On-the-fly configuration via chart drawing text labels (e.g., `BZ +6x,-2x`).
-  - **Zero-Lag Architecture**: Highly optimized AnchorID tracking and targeted redraws eliminate UI flickering and scrolling lag.
-  - **O(1) Gap Detection**: Constant-time mathematical boundary checking for high-precision ES/MES scalping alerts without the overhead of iterative looping.
-  - Multi-tier formatting: "Nice" vs. "Basic" modes with midlines, price labels, and distinct color bands.
-
-### 3. Level Aggregator (`LevelAggregator.cpp`)
-- **Intent**: Consolidates essential structural levels from multiple charts and timeframes into a single on-chart HUD.
-- **Features**:
-  - Scans across specified charts using naming conventions (`LABEL|Description`).
-  - **Dynamic Visualization**: Multiple display modes including on-chart HUD table, short edge lines, and full horizontal lines.
-  - **Auto-Sync Labels**: Line labels automatically include source chart and description (e.g., `Description (Chart)`).
-  - **Control Bar Integration**: Single-button toggle for all visual elements.
-- **Detailed Guide**: [Level Aggregator Guide](LevelAggregator_README.md)
-
-### 4. Drawing Cleaner (`DrawingCleaner.cpp`)
-- **Intent**: A utility bound to a toolbar button for selective chart cleanup.
-- **Features**:
-  - **Customizable**: Choose exactly which types of drawings to delete (Rays, Extended Lines, Horizontal Segments, etc.).
-  - **Exclusions**: Comma-separated, case-insensitive wildcard support to protect specific labeled drawings (e.g., exclude "Pivot" or "Zone").
-  - **Zero Overhead**: Logic only executes upon button click; early-exit guards ensure no performance impact during normal trading.
-
-### 5. Chart Snapshot Engine (`ChartSnapshotEngine.cpp`)
-- **Intent**: Automated and manual chart image capture system.
-- **Features**:
-  - Configurable snapshot intervals and image dimensions.
-  - **Telegram Integration**: Works with `TelegramWatcher.ps1` to export snapshots to messaging platforms.
-  - Control bar toggle buttons for easy activation/deactivation.
-
-### 6. Time Block Highlighter (`TimeBlockHighlighter.cpp`)
-- **Intent**: Visually segments the chart based on time-based sessions.
-- **Features**:
-  - Highlights multiple sessions (e.g., London, NY Open) with configurable transparency and colors.
-  - **Secondary Timezone Labels**: Displays offset timezone ticks (e.g., UTC/GMT) along the axis without cluttering the main price scale.
-
-### 7. Trade Entry Drills (`TradeEntryDrills.cpp`)
-- **Intent**: Training tool for execution and entry practice.
-- **Features**:
-  - Simulates multi-contract entries with randomized slippage/timing to mimic real-world conditions.
-  - Session tracking and performance metrics for drill sets.
-
-### 8. Obsidian Exporter (`ObsidianExporter.cpp`)
-- **Intent**: Bridges trading analysis with personal knowledge management.
-- **Features**:
-  - Exports chart data, levels, and notes directly into Obsidian-compatible markdown formats.
-
-### 9. DOM Account Visualizer (`DOMAccountVisualizer.cpp`)
-- **Intent**: High-visibility safety overlay for Trading DOMs to prevent SIM/LIVE execution errors.
-- **Features**:
-  - **Zero-Lag Gating**: REDRAW logic only executes on account or window size changes, ensuring 0% CPU impact during active scalping.
-  - **Peripheral Awareness**: Dual 6px pillars and a perimeter border provide 360-degree awareness of the active mode.
-  - **Dynamic Detection**: Customizable keywords for SIM/LIVE detection with independent color and label configurations.
-- **Detailed Guide**: [DOM Account Visualizer Guide](DOMAccountVisualizer_README.md)
+## Overview
+This repository contains a suite of high-performance, custom ACSIL (Advanced Custom Study Interface and Language) studies for Sierra Chart. Designed for active futures traders, these tools focus on **operational clarity, quantitative level generation, volume-weighted metrics, and strict risk mitigation** during live execution.
 
 ---
 
-## 🛠 Engineering Guidelines
+## Core Trading Systems
 
-When modifying or expanding these studies, the following principles are strictly enforced:
+The following modules represent the primary operational tools in this suite. Each module is optimized for zero-lag execution and includes dedicated documentation.
 
-1.  **Memory & State Persistence**: Use `sc.GetPersistentPointer` and `sc.AllocateMemory` to retain state across updates. Avoid static variables.
-2.  **Manual Looping**: Studies default to `sc.AutoLoop = 0` to handle historical accumulation patterns and caching inputs efficiently.
-3.  **Calculation Precision**: Map aggregations (Price * Volume) to `double` variables before standard deviation square roots to ensure tick-level accuracy.
-4.  **UI Efficiency**: Restrict costly UI checks, string manipulations, or drawing scans to fresh ticks or specific user actions (button clicks).
+### 1. [Daily AVWAP](DailyAVWAP_README.md)
+**Utility:** Computes an anchored Volume Weighted Average Price (VWAP) that resets dynamically at a configurable daily time (e.g., 17:00 ET).
+* **Risk/Safety:** Ensures overnight session volume is accurately handled without skewing regular trading hours (RTH) calculations.
+* **Key Features:** High-precision standard deviation bands, gap handling for zero-volume bars, and tick-level accuracy using double-precision accumulators.
 
-## 📥 Installation
+### 2. [Balance Zone Engine](BalanceZone_AutoExtend_Guide.md)
+**Utility:** Projects dynamic balance and premium/discount zones derived from user-drawn anchor rectangles directly on the chart.
+* **Operational Edge:** Highly optimized constant-time (O(1)) boundary checking eliminates UI lag during fast markets.
+* **Key Features:** On-the-fly configuration via text labels (e.g., `BZ +6x,-2x`), multi-tier formatting, and targeted redraws.
 
-1.  Place `.cpp` files in your Sierra Chart `/Data` directory.
-2.  In Sierra Chart, go to **Analysis >> Build Custom Studies DLL**.
-3.  Select the desired study and click **Build and Remote Join**.
-4.  Once compiled, add the study to your chart via **Analysis >> Studies**.
+### 3. [Level Aggregator](LevelAggregator_README.md)
+**Utility:** Consolidates essential structural levels scattered across multiple charts and timeframes into a single on-chart HUD.
+* **Operational Edge:** Maintains focus by pulling liquidity/structure levels directly to the execution chart.
+* **Key Features:** Dynamic visualization modes, auto-syncing labels, and strict naming convention scanning (`LABEL|Description`).
 
-## 📜 License
+### 4. [DOM Account Visualizer](DOMAccountVisualizer_README.md)
+**Utility:** Provides a high-visibility, 360-degree safety overlay for Trading DOMs to instantly distinguish between SIM and LIVE execution states.
+* **Risk/Safety:** **CRITICAL** for preventing catastrophic order execution errors on the wrong account.
+* **Key Features:** Zero-lag gating (0% CPU impact during active scalping), customizable detection keywords, and peripheral awareness pillars.
 
-This project is intended for personal and quantitative research use. All rights reserved.
+### 5. [Time Block Highlighter](TimeBlockHighlighter_README.md)
+**Utility:** Visually segments the chart based on time-based sessions (e.g., London, NY Open) to aid in macroeconomic timing.
+* **Operational Edge:** Keeps the trader oriented within specific liquidity windows.
+* **Key Features:** Configurable transparency, multiple session highlights, and secondary timezone labels without axis clutter.
+
+---
+
+## Secondary Utilities
+
+* **Drawing Cleaner (`DrawingCleaner.cpp`):** Selective chart cleanup utility to instantly clear specific drawing types without affecting labeled structural zones.
+* **Chart Snapshot Engine (`ChartSnapshotEngine.cpp`):** Automated image capture system with Telegram integration for journaling and external review.
+* **Trade Entry Drills (`TradeEntryDrills.cpp`):** Execution training tool simulating slippage and multi-contract entries for practice.
+* **Obsidian Exporter (`ObsidianExporter.cpp`):** Bridges live trading analysis with personal knowledge management (PKM) via markdown exports.
+
+---
+
+## Global Installation
+
+1. **Locate Data Folder:** Navigate to your Sierra Chart `/Data` directory.
+2. **Transfer Files:** Copy the desired `.cpp` files into this directory.
+3. **Compile:** Inside Sierra Chart, open **Analysis >> Build Custom Studies DLL**.
+4. **Deploy:** Select the study file, click **Build and Remote Join**.
+5. **Apply:** Add the compiled study to your chart or DOM via **Analysis >> Studies**.
+
+---
+
+## Technical & Engineering Standards
+
+* **Memory Management:** State persistence relies strictly on `sc.GetPersistentPointer` and `sc.AllocateMemory`. Static variables are strictly prohibited to ensure stability across chart reloads.
+* **Execution Efficiency:** Studies default to `sc.AutoLoop = 0` (Manual Looping) to securely handle historical accumulation. UI checks and drawing scans are restricted to fresh ticks or specific user actions.
+* **Calculation Precision:** Volume-weighted metrics use `double` precision prior to standard deviation calculations to prevent truncation errors.

@@ -26,6 +26,7 @@ struct LevelEntry {
     int SourceChart;
     SCString ChartName;
     int ChartPriority;
+    int StaggerOffset = 0;
 };
 
 struct ChartConfig {
@@ -155,6 +156,7 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
                 int startIdx = (endIdx - shortLineBars < 0) ? 0 : endIdx - shortLineBars;
                 Text.BeginIndex = startIdx; Text.TextAlignment = DT_LEFT | DT_BOTTOM;
             }
+            Text.BeginIndex -= (level.StaggerOffset * 10);
             Text.AddMethod = UTAM_ADD_OR_ADJUST;
             sc.UseTool(Text);
         } else sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, labelID);
@@ -226,7 +228,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     enum InputIdx {
         IN_HDR_CORE = 0, IN_TABLE_BUTTON_NUM, IN_TABLE_BUTTON_TEXT, IN_LINE_BUTTON_NUM, IN_LINE_BUTTON_TEXT,
         IN_LINE_TYPE, IN_DISPLAY_MODE, IN_HUD_PREFIX, IN_LABEL_FILTERS, IN_CHART_CONFIG, IN_AUTO_SCAN_INTERVAL,
-        IN_HDR_TABLE, IN_TABLE_X, IN_TABLE_Y, IN_TABLE_RANGE_LEVELS, IN_FONT_SIZE, IN_FONT_COLOR, IN_BG_COLOR, IN_HIGHLIGHT_COLOR,
+        IN_CLUSTER_THRESHOLD, IN_CLUSTER_HANDLING, IN_HDR_TABLE, IN_TABLE_X, IN_TABLE_Y, IN_TABLE_RANGE_LEVELS, IN_FONT_SIZE, IN_FONT_COLOR, IN_BG_COLOR, IN_HIGHLIGHT_COLOR,
         IN_HDR_LINE_SETTINGS, IN_LINE_STYLE, IN_LINE_WIDTH, IN_LINE_COLOR, IN_SHOW_LINE_LABELS, IN_SHORT_LINE_BARS,
         IN_HDR_SORT, IN_SORT_BY_1, IN_SORT_BY_2,
         IN_HDR_EXPORT, IN_EXPORT_ON_SCAN, IN_OUTPUT_DEST, IN_FILE_PATH, IN_USE_TEMPLATE, IN_TEMPLATE_PATH, IN_INCLUDE_CHART_NAME, IN_INCLUDE_DESCRIPTION
@@ -299,6 +301,15 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         sc.Input[IN_AUTO_SCAN_INTERVAL].SetInt(1);
         sc.Input[IN_AUTO_SCAN_INTERVAL].SetIntLimits(0, 3600);
         sc.Input[IN_AUTO_SCAN_INTERVAL].DisplayOrder = order++;
+
+        sc.Input[IN_CLUSTER_THRESHOLD].Name = "Cluster Threshold (Ticks)";
+        sc.Input[IN_CLUSTER_THRESHOLD].SetInt(5);
+        sc.Input[IN_CLUSTER_THRESHOLD].DisplayOrder = order++;
+
+        sc.Input[IN_CLUSTER_HANDLING].Name = "Clustered Text Handling";
+        sc.Input[IN_CLUSTER_HANDLING].SetCustomInputStrings("Merge & Concatenate;Stagger Horizontally");
+        sc.Input[IN_CLUSTER_HANDLING].SetCustomInputIndex(0);
+        sc.Input[IN_CLUSTER_HANDLING].DisplayOrder = order++;
         
         // ===== TABLE SETTINGS =====
         sc.Input[IN_HDR_TABLE].Name = "===== TABLE SETTINGS =====";
@@ -518,6 +529,40 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     std::sort(allLevels.begin(), allLevels.end(), [&](const LevelEntry& a, const LevelEntry& b) {
         int r = Compare(a, b, s1); if (r != 0) return r == 1; return Compare(a, b, s2) == 1;
     });
+
+    if (runScan && !allLevels.empty()) {
+        double thresholdPrice = sc.Input[IN_CLUSTER_THRESHOLD].GetInt() * sc.TickSize;
+        int clusterMode = sc.Input[IN_CLUSTER_HANDLING].GetIndex();
+        std::vector<LevelEntry> processedLevels;
+        processedLevels.push_back(allLevels[0]);
+
+        for (size_t i = 1; i < allLevels.size(); ++i) {
+            LevelEntry& current = processedLevels.back();
+            LevelEntry next = allLevels[i];
+            
+            double diff = current.Price - next.Price;
+            if (diff < 0) diff = -diff;
+
+            if (diff <= thresholdPrice) {
+                if (clusterMode == 0) { // Merge
+                    current.Price = (current.Price + next.Price) / 2.0;
+                    SCString labelA = current.Label;
+                    SCString labelB = next.Label;
+                    current.Label.Format("%s / %s", labelA.GetChars(), labelB.GetChars());
+                    SCString descA = current.Description.GetLength() > 0 ? current.Description : labelA;
+                    SCString descB = next.Description.GetLength() > 0 ? next.Description : labelB;
+                    current.Description.Format("%s / %s", descA.GetChars(), descB.GetChars());
+                } else { // Stagger
+                    next.StaggerOffset = current.StaggerOffset + 1;
+                    processedLevels.push_back(next);
+                }
+            } else {
+                processedLevels.push_back(next);
+            }
+        }
+        allLevels = processedLevels;
+    }
+
     p_State->Levels = allLevels; p_State->HasScanned = true; p_State->LastScanTime = now;
     p_State->LastHighIdx = -1; p_State->ForceRedraw = true;
     sc.AddMessageToLog(SCString().Format("Level Aggregator: Scanned %d charts, %d levels found.", (int)charts.size(), (int)allLevels.size()), 0);

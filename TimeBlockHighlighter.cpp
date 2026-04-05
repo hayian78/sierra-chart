@@ -258,7 +258,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         TzOffsetHHMMInput.SetInt(0);
         TzOffsetHHMMInput.DisplayOrder = dispOrder++;
 
-        TickIntervalMinutes.Name = "Tick Label Interval Minutes (0=auto: 120/60/30 based on bar period)";
+        TickIntervalMinutes.Name = "Tick Label Interval Minutes (0=auto scale by zoom)";
         TickIntervalMinutes.SetInt(0);
         TickIntervalMinutes.DisplayOrder = dispOrder++;
 
@@ -570,7 +570,9 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         
         // Lazy Sticky Edge: REDRAW logic only executes on 30-bar quantized changes
         int quantizedFirstBar = sc.IndexOfFirstVisibleBar / 30;
+        int quantizedLastBar = sc.IndexOfLastVisibleBar / 30;
         currentHash ^= quantizedFirstBar * 31;
+        currentHash ^= quantizedLastBar * 37;
         
         // If nothing changed, skip redraw
         if (currentHash == LastInputHash && sc.ArraySize == LastArraySize && !sc.IsFullRecalculation)
@@ -1220,15 +1222,36 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         // Choose interval
         if (tickEveryMin <= 0)
         {
-            double barSeconds = sc.SecondsPerBar;
-            if (barSeconds <= 0)
-                tickEveryMin = 60;
+            double visibleSpanDays = 0.0;
+            if (visibleEnd > visibleStart && visibleStart >= 0 && visibleEnd < sc.ArraySize)
+            {
+                visibleSpanDays = (sc.BaseDateTimeIn[visibleEnd] - sc.BaseDateTimeIn[visibleStart]).GetAsDouble();
+            }
+
+            if (visibleSpanDays <= 0.0)
+            {
+                double barSeconds = sc.SecondsPerBar;
+                if (barSeconds <= 0)
+                    tickEveryMin = 60;
+                else
+                {
+                    const double barMinutes = barSeconds / 60.0;
+                    if (barMinutes <= 1.0)      tickEveryMin = 30;
+                    else if (barMinutes <= 5.0) tickEveryMin = 60;
+                    else                        tickEveryMin = 120;
+                }
+            }
             else
             {
-                const double barMinutes = barSeconds / 60.0;
-                if (barMinutes <= 1.0)      tickEveryMin = 30;
-                else if (barMinutes <= 5.0) tickEveryMin = 60;
-                else                        tickEveryMin = 120;
+                // Dynamic scaling based on visible time span to prevent bunching
+                if (visibleSpanDays <= 0.1)        tickEveryMin = 15;   // <= ~2.4 hours
+                else if (visibleSpanDays <= 0.25)  tickEveryMin = 30;   // <= 6 hours
+                else if (visibleSpanDays <= 0.5)   tickEveryMin = 60;   // <= 12 hours
+                else if (visibleSpanDays <= 1.0)   tickEveryMin = 120;  // <= 1 day
+                else if (visibleSpanDays <= 2.0)   tickEveryMin = 240;  // <= 2 days
+                else if (visibleSpanDays <= 5.0)   tickEveryMin = 480;  // <= 5 days
+                else if (visibleSpanDays <= 10.0)  tickEveryMin = 1440; // <= 10 days
+                else                               tickEveryMin = 10080;// > 10 days (Weekly)
             }
         }
         if (tickEveryMin < 1)
