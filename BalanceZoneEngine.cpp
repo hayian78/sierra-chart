@@ -1950,13 +1950,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return;
     }
 
-    // --- Stage 3: Range for Smart Stacking ---
-    double latestAnchorTop = 0, latestAnchorBot = 0;
-    if (latestAnchorPtr) {
-        latestAnchorTop = std::max(latestAnchorPtr->BeginValue, latestAnchorPtr->EndValue);
-        latestAnchorBot = std::min(latestAnchorPtr->BeginValue, latestAnchorPtr->EndValue);
-    }
-
     auto ApplyOverrideToMax = [&](bool has, bool isX, int v, int fallbackMax) -> int
     {
         if (!has) return fallbackMax;
@@ -2123,15 +2116,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 // Add 50% of the remaining transparency range to avoid full invisibility
                 transparency = transparency + (int)((100 - transparency) * 0.50);
                 transparency = ClampInt(transparency, 0, 100);
-            }
-
-            // Stage 3: Smart Stacking: +30% transparency penalty for historical zones overlapping latest anchor
-            if (!isLatest && latestAnchorPtr != nullptr)
-            {
-                if (projBot < latestAnchorTop && projTop > latestAnchorBot)
-                {
-                    transparency = std::min(100, transparency + 30);
-                }
             }
 
             const bool isUp = (side == ZoneSide::Up);
