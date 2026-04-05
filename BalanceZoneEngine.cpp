@@ -52,11 +52,9 @@
 #include <cctype>
 #include <cstdlib> // atoi
 #include <unordered_set>
-#include <unordered_map>
 #include <utility>
 #include <cstring> // strncmp
 
-// Stage 1: Smart Cleanup Optimization
 static constexpr int  BZE_BUILD = 2026020901; // YYYYMMDDNN
 
 // Uncomment to enable debug logging (has minor perf overhead)
@@ -522,32 +520,6 @@ static inline bool WantBorderForAnchor(const SCStudyInterfaceRef& sc, bool isNic
     return sc.Input[IN_BASIC_DRAW_BORDER].GetYesNo() != 0;
 }
 
-// -----------------------------
-// Global Structs
-// -----------------------------
-struct AnchorData
-{
-    int LineNumber = 0;
-    int Region = 0;
-    int BeginIndex = 0;
-    int EndIndex = 0;
-    double BeginValue = 0.0;
-    double EndValue = 0.0;
-    COLORREF Color = 0;
-    COLORREF SecondaryColor = 0;
-    int TransparencyLevel = 0;
-    int DrawMidline = 0;    // Whether the anchor rectangle has native midline enabled
-    int LineWidth = 1;      // Anchor outline/midline width
-    SCDateTime BeginDateTime;
-    SCDateTime EndDateTime;
-    SCString Text;
-};
-
-struct AnchorCache
-{
-    std::vector<AnchorData> Anchors;
-};
-
 // ----------------------------------------------------------------------------
 // Main study
 // ----------------------------------------------------------------------------
@@ -581,10 +553,35 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         std::vector<std::string> parsed;
     };
 
+    struct AnchorData
+    {
+        int LineNumber = 0;
+        int Region = 0;
+        int BeginIndex = 0;
+        int EndIndex = 0;
+        double BeginValue = 0.0;
+        double EndValue = 0.0;
+        COLORREF Color = 0;
+        COLORREF SecondaryColor = 0;
+        int TransparencyLevel = 0;
+        int DrawMidline = 0;    // Whether the anchor rectangle has native midline enabled
+        int LineWidth = 1;      // Anchor outline/midline width
+        SCDateTime BeginDateTime;
+        SCDateTime EndDateTime;
+        SCString Text;
+    };
+
     struct AnchorIDTracker {
         // Key: Anchor LineNumber
         // Value: Vector of active projection LineNumbers (Zones, Midlines, Labels)
         std::unordered_map<int, std::vector<int>> activeMap;
+    };
+
+    struct BZE_PersistentState {
+        int CodeVersion = 0;
+        int PrevZone = 0;
+        double LastProcessedPrice = 0.0;
+        int LastProcessedBarIndex = 0;
     };
 
     // NOTE: BZZoneHashCache was removed - zone hash skip optimization caused drawing issues and was disabled.
@@ -594,7 +591,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.GraphRegion  = 0;
         sc.AutoLoop     = 0;
         sc.UpdateAlways = 1;
-        sc.ReceiveChartDrawingEvents = 0;
 
         // Keep subgraphs only for alerts (hidden). Everything else ignored.
         for (int i = 0; i < 32; ++i)
@@ -968,6 +964,13 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
             sc.SetPersistentPointer(104, nullptr);
         }
 
+        auto* pState = static_cast<BZE_PersistentState*>(sc.GetPersistentPointer(105));
+        if (pState != nullptr)
+        {
+            delete pState;
+            sc.SetPersistentPointer(105, nullptr);
+        }
+
         // NOTE: Zone hash cache (persistent pointer 4) cleanup removed - optimization disabled.
         return;
     }
@@ -986,6 +989,12 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.SetPersistentPointer(102, pCache);
     }
 
+    auto* pState = static_cast<BZE_PersistentState*>(sc.GetPersistentPointer(105));
+    if (!pState)
+    {
+        pState = new BZE_PersistentState;
+        sc.SetPersistentPointer(105, pState);
+    }
     
     // NOTE: Zone hash cache (persistent pointer 4) was removed - optimization disabled.
 
@@ -1560,12 +1569,52 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         (P_LastDnT36       != dnT36) ||
         (P_LastDnT714      != dnT714) ||
         (P_LastDnT1530     != dnT1530) ||
-        (P_LastAutoExtend  != (autoExtendLatest ? 1 : 0));  // Track auto-extend changes
+        (P_LastAutoExtend  != (autoExtendLatest ? 1 : 0));
+
+    // Update state IMMEDIATELY to prevent feedback loops on re-entry
+    P_LastMaxUpGroups = maxUpGroups;
+    P_LastMaxDnGroups = maxDownGroups;
+    P_LastOnlyRecent  = onlyMostRecent ? 1 : 0;
+    P_LastShowPrices  = showRectPrices ? 1 : 0;
+    P_LastMidStyle    = midlineStyleSetting;
+    P_LastMidWidth    = midlineWidth;
+    P_LastMidColorMode = curMidMode;
+    P_LastBorderMode  = curBorderMode;
+    P_LastBasicBorder = curBasicBorder;
+    P_LastCustomBorderColor = curCustomBorder;
+    P_LastCustomMidColor    = curCustomMid;
+    P_LastLblDec      = userDecimals;
+    P_LastLblOff      = labelBarOff;
+    P_LastZoneLblMode = zoneNameLabelMode;
+    P_LastZoneLblHashCost = zoneLblHashCost;
+    P_LastZoneLblHashUp   = zoneLblHashUp;
+    P_LastZoneLblHashDn   = zoneLblHashDn;
+    P_LastProcVisible = processVisibleOnlySetting ? 1 : 0;
+    P_LastNiceN       = niceN;
+    P_LastUpFill12    = upFill12;
+    P_LastUpFill36    = upFill36;
+    P_LastUpFill714   = upFill714;
+    P_LastUpFill1530  = upFill1530;
+    P_LastDnFill12    = dnFill12;
+    P_LastDnFill36    = dnFill36;
+    P_LastDnFill714   = dnFill714;
+    P_LastDnFill1530  = dnFill1530;
+    P_LastUpT12       = upT12;
+    P_LastUpT36       = upT36;
+    P_LastUpT714      = upT714;
+    P_LastUpT1530     = upT1530;
+    P_LastDnT12       = dnT12;
+    P_LastDnT36       = dnT36;
+    P_LastDnT714      = dnT714;
+    P_LastDnT1530     = dnT1530;
+    P_LastAutoExtend  = autoExtendLatest ? 1 : 0;
 
     // NOTE: Zone hash cache optimization was disabled due to causing drawing issues.
     // The cache clear code is removed but inputsChanged is still used for redraw logic.
 
     const bool anchorsChanged = (P_LastAnchorCount != curAnchorCount);
+    P_LastAnchorCount = curAnchorCount; // Update NOW
+
     const bool isFullRecalc   = (sc.IsFullRecalculation != 0);
 
     // Check for scroll/zoom changes
@@ -1590,15 +1639,12 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             if (forceRedrawNow || inputsChanged || anchorsChanged || anchorGeometryChanged)
                 shouldRedraw = true;
             
-            // Fix: If we are scrolling and using features that depend on visibility
-            // (Zone Name Labels or Process Visible Only), we MUST redraw.
+            // Fix: If we are scrolling and using Process Visible Only, we MUST redraw.
+            // Zone Name Labels are now anchored to the projection's right edge, so they no longer
+            // depend on visibleChanged.
             if (!shouldRedraw && visibleChanged)
             {
-                const bool usingZoneLabels = (zoneNameLabelMode != 0); // 1=Nice, 2=All
-                
-                // If using Process Visible Only, we must redraw when view changes to find new anchors.
-                // If using Zone Labels, we must redraw to update label positions relative to left edge.
-                if (usingZoneLabels || processVisibleOnlySetting)
+                if (processVisibleOnlySetting)
                 {
                     shouldRedraw = true;
                 }
@@ -1620,11 +1666,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
     PrevForceRedrawState = forceRedrawNow ? 1 : 0;
     
-    // Update persistent state tracking for auto-extend
-    P_LastAutoExtend = autoExtendLatest ? 1 : 0;
-
     // If projections disappeared after rebuild, force redraw
-    // (Legacy logic removed)
+    bool projectionsMissing = false;
 
     // Unified MakeBase function (used throughout)
     auto MakeBase = [&](int anchorLine) -> int
@@ -1650,69 +1693,14 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     // ------------------------------------------------------------------
 
     // Force redraw once after code upgrade
-    int& P_CodeVersion = sc.GetPersistentInt(98);
-
-    if (P_CodeVersion != BZE_BUILD)
+    if (pState->CodeVersion != BZE_BUILD)
     {
         shouldRedraw = true;
-        P_CodeVersion = BZE_BUILD;
+        pState->CodeVersion = BZE_BUILD;
     }
 
     if (!shouldRedraw)
         return;
-
-    // Persist state
-    P_LastAnchorCount = curAnchorCount;
-    P_LastMaxUpGroups = maxUpGroups;
-    P_LastMaxDnGroups = maxDownGroups;
-    P_LastOnlyRecent  = onlyMostRecent ? 1 : 0;
-    P_LastShowPrices  = showRectPrices ? 1 : 0;
-    P_LastMidStyle    = midlineStyleSetting;
-    P_LastMidWidth    = midlineWidth;
-    P_LastBorderMode  = curBorderMode;
-    P_LastBasicBorder = curBasicBorder;
-    P_LastMidColorMode= curMidMode;
-
-    P_LastCustomBorderColor = curCustomBorder;
-    P_LastCustomMidColor    = curCustomMid;
-
-    P_LastLblDec      = userDecimals;
-    P_LastLblOff      = labelBarOff;
-
-    P_LastZoneLblMode = zoneNameLabelMode;
-    P_LastZoneLblHashCost = zoneLblHashCost;
-    P_LastZoneLblHashUp   = zoneLblHashUp;
-    P_LastZoneLblHashDn   = zoneLblHashDn;
-
-    P_LastProcVisible = processVisibleOnlySetting ? 1 : 0;
-    P_LastNiceN       = niceN;
-
-    P_LastUpFill12    = upFill12;
-    P_LastUpFill36    = upFill36;
-    P_LastUpFill714   = upFill714;
-    P_LastUpFill1530  = upFill1530;
-
-    P_LastDnFill12    = dnFill12;
-    P_LastDnFill36    = dnFill36;
-    P_LastDnFill714   = dnFill714;
-    P_LastDnFill1530  = dnFill1530;
-
-    P_LastUpT12       = upT12;
-    P_LastUpT36       = upT36;
-    P_LastUpT714      = upT714;
-    P_LastUpT1530     = upT1530;
-
-    P_LastDnT12       = dnT12;
-    P_LastDnT36       = dnT36;
-    P_LastDnT714      = dnT714;
-
-    P_LastDnT1530     = dnT1530;
-
-    P_LastVisibleIndex = sc.IndexOfFirstVisibleBar;
-
-    // Persist anchor hash
-    P_LastAnchorGeomHashLo = (int)(uint32_t)(curAnchorGeomHash & 0xFFFFFFFFULL);
-    P_LastAnchorGeomHashHi = (int)(uint32_t)((curAnchorGeomHash >> 32) & 0xFFFFFFFFULL);
 
     // Auto-reset manual trigger (only in manual mode)
     if (!autoRedraw && forceRedrawNow)
@@ -1723,10 +1711,20 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     // force redraw even if inputs didn't change.
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // DROP-IN PATCH: If projections disappeared (common after DLL rebuild),
+    // force redraw even if inputs didn't change.
+    // ------------------------------------------------------------------
+
     auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(104));
     if (!pTracker) { pTracker = new AnchorIDTracker; sc.SetPersistentPointer(104, pTracker); }
 
-    auto RegisterDrawingID = [&](int anchorLine, int drawingID) { pTracker->activeMap[anchorLine].push_back(drawingID); };
+    auto RegisterDrawingID = [&](int anchorLine, int drawingID) { 
+        auto& vec = pTracker->activeMap[anchorLine];
+        if (std::find(vec.begin(), vec.end(), drawingID) == vec.end()) {
+            vec.push_back(drawingID); 
+        }
+    };
     auto ExecuteSmartCleanup = [&](int anchorLine) {
         auto it = pTracker->activeMap.find(anchorLine);
         if (it != pTracker->activeMap.end()) {
@@ -2809,32 +2807,27 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     ComputeZoneAndDistance(srcAnchor, alertMaxUp, alertMaxDown, alertEnableUp, alertEnableDown,
                            currentZone, nearestBoundary);
 
-    int& PrevZone = sc.GetPersistentInt(82);
-    const int prevZone = PrevZone;
+    const int prevZone = pState->PrevZone;
 
-    // --- Stage 4: Alert System Robustness (Gap Detection) ---
+    // --- Stage 4: Alert System Robustness (Mathematical O(1) Gap Detection) ---
     const bool useGapDetection = (sc.Input[IN_ALERT_USE_GAP_DETECTION].GetYesNo() != 0);
     const bool includeBarHL    = (sc.Input[IN_ALERT_INCLUDE_BAR_HL].GetYesNo() != 0);
-    double& LastProcessedPrice = sc.GetPersistentDouble(80);
-    int& LastProcessedBarIndex = sc.GetPersistentInt(81);
 
     bool boundaryCrossedInPath = false;
-    if (useGapDetection && LastProcessedPrice > 0.0)
+    if (useGapDetection && pState->LastProcessedPrice > 0.0)
     {
         // Reset if we've scrolled back significantly
-        if (lastIndex < LastProcessedBarIndex)
+        if (lastIndex < pState->LastProcessedBarIndex)
         {
-            LastProcessedPrice = snappedPrice;
-            LastProcessedBarIndex = lastIndex;
+            pState->LastProcessedPrice = snappedPrice;
+            pState->LastProcessedBarIndex = lastIndex;
         }
 
         double pathLow, pathHigh;
-        if (lastIndex > LastProcessedBarIndex)
+        if (lastIndex > pState->LastProcessedBarIndex)
         {
-            // If we've skipped bars or moved to a new bar, the path includes the previous price, 
-            // the current bar's H/L (if enabled), and the current price.
-            pathLow  = (std::min)(snappedPrice, LastProcessedPrice);
-            pathHigh = (std::max)(snappedPrice, LastProcessedPrice);
+            pathLow  = (std::min)(snappedPrice, pState->LastProcessedPrice);
+            pathHigh = (std::max)(snappedPrice, pState->LastProcessedPrice);
 
             if (includeBarHL)
             {
@@ -2844,28 +2837,48 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         }
         else
         {
-            pathLow = (std::min)(snappedPrice, LastProcessedPrice);
-            pathHigh = (std::max)(snappedPrice, LastProcessedPrice);
+            pathLow = (std::min)(snappedPrice, pState->LastProcessedPrice);
+            pathHigh = (std::max)(pathHigh, (double)sc.High[lastIndex]);
         }
 
+        // Mathematical O(1) Check: 
+        // Normalize coordinates against zone height (H). 
+        // If floor(normalizedPrice) changes, we crossed a boundary.
         const double topRaw = (std::max)(srcAnchor.BeginValue, srcAnchor.EndValue);
         const double botRaw = (std::min)(srcAnchor.BeginValue, srcAnchor.EndValue);
         const double sTop = SnapToIncrement(topRaw);
         const double sBot = SnapToIncrement(botRaw);
-        const double hVal = sTop - sBot;
+        const double H = sTop - sBot;
 
-        if (hVal > FLOAT_EPSILON)
+        if (H > FLOAT_EPSILON)
         {
-            // Check if any zone boundary is within the path [pathLow, pathHigh]
-            for (int m = -alertMaxDown; m <= alertMaxUp + 1; ++m)
+            // Normalize the path relative to the anchor bottom
+            const double normLow  = (pathLow - sBot) / H;
+            const double normHigh = (pathHigh - sBot) / H;
+
+            // If the integer part of the normalized price differs, a boundary was crossed.
+            // Using floor() ensures we handle negative zones (discount) correctly.
+            if (std::floor(normLow + 1e-9) != std::floor(normHigh - 1e-9))
             {
-                double b = SnapToIncrement(sBot + (double)m * hVal);
+                // Verify the crossing is within the active alert range
+                const int idxLow  = (int)std::floor(normLow + 1e-9);
+                const int idxHigh = (int)std::floor(normHigh - 1e-9);
                 
-                if (b >= pathLow && b <= pathHigh) 
-                { 
-                    boundaryCrossedInPath = true; 
-                    break; 
+                // Crosses any boundary between idxLow and idxHigh
+                // Active range is [-alertMaxDown, alertMaxUp]
+                // Boundaries are at integers: ..., -1, 0, 1, 2, ...
+                bool inRange = false;
+                for (int b = (std::min)(idxLow, idxHigh) + 1; b <= (std::max)(idxLow, idxHigh); ++b)
+                {
+                    if (b >= -alertMaxDown && b <= alertMaxUp + 1)
+                    {
+                        inRange = true;
+                        break;
+                    }
                 }
+
+                if (inRange)
+                    boundaryCrossedInPath = true;
             }
         }
     }
@@ -2887,12 +2900,12 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
     SG_ZoneDist[lastIndex] = (float)distTicks;
     
-    PrevZone = currentZone;
-    LastProcessedPrice = snappedPrice;
-    LastProcessedBarIndex = lastIndex;
+    pState->PrevZone = currentZone;
+    pState->LastProcessedPrice = snappedPrice;
+    pState->LastProcessedBarIndex = lastIndex;
 
     // Update tracking for the next frame
-    // This allows us to process the \"outgoing\" extended anchor even if it's off-screen
+    // This allows us to process the "outgoing" extended anchor even if it's off-screen
     if (autoExtendLatest && latestAnchorPtr != nullptr)
         P_LastExtendedAnchor = latestAnchorPtr->LineNumber;
     else
