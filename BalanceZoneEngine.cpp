@@ -1744,7 +1744,13 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         }
     };
 
-    auto DeleteLn = [&](int lineNumber) { /* Legacy cleanup wrapper, safely ignored by smart cleanup */ };
+    auto DeleteLn = [&](int lineNumber) { 
+        s_UseTool check;
+        check.Clear();
+        if (sc.GetACSDrawingByLineNumber(sc.ChartNumber, lineNumber, check) != 0) {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, lineNumber); 
+        }
+    };
     auto DeleteAllForAnchor = [&](int anchorLine) { ExecuteSmartCleanup(anchorLine); };
 
     // Persist previous anchor list for cleanup
