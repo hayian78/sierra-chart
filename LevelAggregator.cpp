@@ -440,6 +440,9 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
 
     GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
     if (!p_State) { p_State = new GlobalState; sc.SetPersistentPointer(1, p_State); }
+
+    if (sc.ArraySize == 0) return;
+
     if (!p_State->HasInitialized) {
         if (sc.Input[IN_TABLE_BUTTON_NUM].GetInt() == 0 && sc.Input[IN_LINE_BUTTON_NUM].GetInt() == 0) {
             int m = sc.Input[IN_DISPLAY_MODE].GetIndex();
@@ -486,7 +489,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     std::vector<SCString> targetLabels; std::vector<bool> labelFindAll;
     SCString filters = sc.Input[IN_LABEL_FILTERS].GetString();
     if (!filters.IsEmpty()) {
-        char fBuf[1024]; strncpy(fBuf, filters.GetChars(), 1023); char* fToken = strtok(fBuf, ",");
+        char fBuf[1024]; strncpy(fBuf, filters.GetChars(), 1023); fBuf[1023] = '\0'; char* fToken = strtok(fBuf, ",");
         while (fToken) {
             while (*fToken == ' ') fToken++; bool findAll = false; char* pipe = strstr(fToken, "|All");
             if (pipe) { *pipe = '\0'; findAll = true; }
@@ -497,7 +500,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     if (targetLabels.empty()) return;
     std::vector<ChartConfig> charts; SCString cfgStr = sc.Input[IN_CHART_CONFIG].GetString();
     if (!cfgStr.IsEmpty()) {
-        char fBuf[1024]; strncpy(fBuf, cfgStr.GetChars(), 1023); char* fToken = strtok(fBuf, ","); int priority = 0;
+        char fBuf[1024]; strncpy(fBuf, cfgStr.GetChars(), 1023); fBuf[1023] = '\0'; char* fToken = strtok(fBuf, ","); int priority = 0;
         while (fToken) {
             while (*fToken == ' ') fToken++; char* pipe = strchr(fToken, '|');
             ChartConfig c; c.Priority = priority++;
