@@ -52,9 +52,11 @@
 #include <cctype>
 #include <cstdlib> // atoi
 #include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <cstring> // strncmp
 
+// Stage 1: Smart Cleanup Optimization
 static constexpr int  BZE_BUILD = 2026020901; // YYYYMMDDNN
 
 // Uncomment to enable debug logging (has minor perf overhead)
@@ -572,6 +574,12 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         SCString Text;
     };
 
+    struct AnchorIDTracker {
+        // Key: Anchor LineNumber
+        // Value: Vector of active projection LineNumbers (Zones, Midlines, Labels)
+        std::unordered_map<int, std::vector<int>> activeMap;
+    };
+
     // NOTE: BZZoneHashCache was removed - zone hash skip optimization caused drawing issues and was disabled.
 
     if (sc.SetDefaults)
@@ -944,6 +952,14 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         // Clear the previous zone label owner tracking
         sc.SetPersistentPointer(3, nullptr);
         
+        // Stage 1: Persistent Tracker Cleanup
+        auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(100));
+        if (pTracker != nullptr)
+        {
+            delete pTracker;
+            sc.SetPersistentPointer(100, nullptr);
+        }
+
         // NOTE: Zone hash cache (persistent pointer 4) cleanup removed - optimization disabled.
         return;
     }
@@ -1698,7 +1714,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     // force redraw even if inputs didn't change.
     // ------------------------------------------------------------------
 
-    AnchorIDTracker* pTracker = (AnchorIDTracker*)sc.GetPersistentPointer(100);
+    auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(100));
     if (!pTracker) { pTracker = new AnchorIDTracker; sc.SetPersistentPointer(100, pTracker); }
 
     auto RegisterDrawingID = [&](int anchorLine, int drawingID) { pTracker->activeMap[anchorLine].push_back(drawingID); };
