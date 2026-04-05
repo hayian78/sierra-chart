@@ -636,7 +636,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
 
     p_State->Levels = allLevels; p_State->HasScanned = true; p_State->LastScanTime = now;
     p_State->LastHighIdx = -1; p_State->ForceRedraw = true;
-    sc.AddMessageToLog(SCString().Format("Level Aggregator: Scanned %d charts, %d levels found.", (int)charts.size(), (int)allLevels.size()), 0);
+    // sc.AddMessageToLog(SCString().Format("Level Aggregator: Scanned %d charts, %d levels found.", (int)charts.size(), (int)allLevels.size()), 0);
 
     if (!sc.Input[IN_EXPORT_ON_SCAN].GetYesNo()) return;
     SCString output;

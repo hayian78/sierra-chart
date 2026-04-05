@@ -1630,7 +1630,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         const int lineNum  = markerBase + 2 * markerDrawIndex;
         const int labelNum = markerBase + 2 * markerDrawIndex + 1;
         int vi = FutureBarIndex(markerDT);
-        sc.AddMessageToLog(sc.GraphShortName + SCString(": DrawFutureMarker called, vi=") + SCString(vi) + SCString(" label=") + SCString(marker.label), 0);
+        // sc.AddMessageToLog(sc.GraphShortName + SCString(": DrawFutureMarker called, vi=") + SCString(vi) + SCString(" label=") + SCString(marker.label), 0);
 
         // DRAWING_LINE with virtual bar index for future space
         s_UseTool L;
@@ -1690,7 +1690,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         if (eDT > latestDT)
         {
-            sc.AddMessageToLog(sc.GraphShortName + SCString(": FutureMarkersForSession s=") + SCString((int)(s*1440)) + SCString("m e=") + SCString((int)(e*1440)) + SCString("m sDT=") + sc.DateTimeToString(sDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" eDT=") + sc.DateTimeToString(eDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" mrkCnt=") + SCString(markerCount), 0);
+        // sc.AddMessageToLog(sc.GraphShortName + SCString(": FutureMarkersForSession s=") + SCString((int)(s*1440)) + SCString("m e=") + SCString((int)(e*1440)) + SCString("m sDT=") + sc.DateTimeToString(sDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" eDT=") + sc.DateTimeToString(eDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" mrkCnt=") + SCString(markerCount), 0);
             for (int m = 0; m < markerCount; ++m)
             {
                 if (IsTimeInWindow(markers[m].time, s, e))
@@ -1710,15 +1710,15 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     // Draw future markers for active sessions
     if (extendActive)
     {
-        sc.AddMessageToLog(sc.GraphShortName + SCString(": extendActive=true, enableA=") + SCString(enableA) + SCString(" enableB=") + SCString(enableB), 0);
+        // sc.AddMessageToLog(sc.GraphShortName + SCString(": extendActive=true, enableA=") + SCString(enableA) + SCString(" enableB=") + SCString(enableB), 0);
         if (enableA && ShouldHighlight(latestDT, startA, endA))
         {
-            sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session A"), 0);
+            // sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session A"), 0);
             DrawFutureMarkersForSession(startA, endA, latestDT, false);
         }
         if (enableB && ShouldHighlight(latestDT, startB, endB))
         {
-            sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session B"), 0);
+            // sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session B"), 0);
             DrawFutureMarkersForSession(startB, endB, latestDT, false);
         }
     }
@@ -1726,7 +1726,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     // Draw future markers for upcoming preview sessions
     if (previewUpcoming)
     {
-        sc.AddMessageToLog(sc.GraphShortName + SCString(": previewUpcoming=true"), 0);
+        // sc.AddMessageToLog(sc.GraphShortName + SCString(": previewUpcoming=true"), 0);
         if (enableA)
         {
             SCDateTime sDT, eDT;
