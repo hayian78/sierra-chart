@@ -175,9 +175,9 @@ SCSFExport scsf_DOMAccountVisualizer(SCStudyInterfaceRef sc) {
     Tool.LineNumber = 10004; Tool.BeginIndex = lastBar; sc.UseTool(Tool);
 
     // HUD Text
-    Tool.LineNumber = 10005; Tool.DrawingType = DRAWING_TEXT; Tool.BeginIndex = firstBar; Tool.BeginValue = 95;
-    Tool.Text.Format("  %s", label.GetChars()); // Added spaces to offset from left pillar
-    Tool.FontSize = sc.Input[IN_FONT_SIZE].GetInt(); Tool.FontBold = 1; Tool.TransparentLabelBackground = 0; Tool.FontBackColor = RGB(0, 0, 0);
+    Tool.LineNumber = 10005; Tool.DrawingType = DRAWING_TEXT; Tool.BeginIndex = firstBar + 1; Tool.BeginValue = 95;
+    Tool.Text = label;
+    Tool.FontSize = sc.Input[IN_FONT_SIZE].GetInt(); Tool.FontBold = 1; Tool.TransparentLabelBackground = 1;
     Tool.TextAlignment = DT_LEFT | DT_TOP;
     sc.UseTool(Tool);
 }
