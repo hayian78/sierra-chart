@@ -522,6 +522,32 @@ static inline bool WantBorderForAnchor(const SCStudyInterfaceRef& sc, bool isNic
     return sc.Input[IN_BASIC_DRAW_BORDER].GetYesNo() != 0;
 }
 
+// -----------------------------
+// Global Structs
+// -----------------------------
+struct AnchorData
+{
+    int LineNumber = 0;
+    int Region = 0;
+    int BeginIndex = 0;
+    int EndIndex = 0;
+    double BeginValue = 0.0;
+    double EndValue = 0.0;
+    COLORREF Color = 0;
+    COLORREF SecondaryColor = 0;
+    int TransparencyLevel = 0;
+    int DrawMidline = 0;    // Whether the anchor rectangle has native midline enabled
+    int LineWidth = 1;      // Anchor outline/midline width
+    SCDateTime BeginDateTime;
+    SCDateTime EndDateTime;
+    SCString Text;
+};
+
+struct AnchorCache
+{
+    std::vector<AnchorData> Anchors;
+};
+
 // ----------------------------------------------------------------------------
 // Main study
 // ----------------------------------------------------------------------------
@@ -555,25 +581,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         std::vector<std::string> parsed;
     };
 
-    // Lightweight struct for anchor data - replaces full s_UseTool (~500 bytes) with only needed fields (~80 bytes)
-    struct AnchorData
-    {
-        int LineNumber = 0;
-        int Region = 0;
-        int BeginIndex = 0;
-        int EndIndex = 0;
-        double BeginValue = 0.0;
-        double EndValue = 0.0;
-        COLORREF Color = 0;
-        COLORREF SecondaryColor = 0;
-        int TransparencyLevel = 0;
-        int DrawMidline = 0;    // Whether the anchor rectangle has native midline enabled
-        int LineWidth = 1;      // Anchor outline/midline width
-        SCDateTime BeginDateTime;
-        SCDateTime EndDateTime;
-        SCString Text;
-    };
-
     struct AnchorIDTracker {
         // Key: Anchor LineNumber
         // Value: Vector of active projection LineNumbers (Zones, Midlines, Labels)
@@ -587,6 +594,7 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.GraphRegion  = 0;
         sc.AutoLoop     = 0;
         sc.UpdateAlways = 1;
+        sc.ReceiveChartDrawingEvents = 0;
 
         // Keep subgraphs only for alerts (hidden). Everything else ignored.
         for (int i = 0; i < 32; ++i)
@@ -2037,8 +2045,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
         const int anchorLine = src.LineNumber;
         const int base       = MakeBase(anchorLine);
-
-        ExecuteSmartCleanup(anchorLine); // Stage 1: Targeted cleanup
 
         // Use pre-parsed overrides (passed in from caller)
 
