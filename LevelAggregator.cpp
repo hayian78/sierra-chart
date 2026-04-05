@@ -40,6 +40,8 @@ struct GlobalState {
     bool HasScanned = false;
     SCDateTime LastScanTime;
     SCDateTime LastAutoScanTime;
+    SCDateTime LastTblToggleTime;
+    SCDateTime LastLinToggleTime;
     bool IsTableVisible = false;
     bool AreLinesVisible = false;
     bool HasInitialized = false;
@@ -57,6 +59,7 @@ struct GlobalState {
 SCString TrimSCString(const SCString& input) {
     if (input.GetLength() == 0) return input;
     const char* start = input.GetChars();
+    if (start == nullptr) return "";
     const char* end = start + input.GetLength() - 1;
     while (start <= end && isspace((unsigned char)*start)) start++;
     while (end >= start && isspace((unsigned char)*end)) end--;
@@ -71,14 +74,15 @@ void CalculateHighlights(const std::vector<LevelEntry>& levels, double currentPr
     double minDistHigh = DBL_MAX; double minDistLow = DBL_MAX;
     for (size_t i = 0; i < levels.size(); ++i) {
         double diff = levels[i].Price - currentPrice;
-        if (diff >= 0 && diff < minDistHigh) { minDistHigh = diff; idxHigh = (int)i; }
+        // Use a tiny epsilon for equality to handle floating point precision
+        if (diff >= -0.0000001 && diff < minDistHigh) { minDistHigh = diff; idxHigh = (int)i; }
         else if (diff < 0 && -diff < minDistLow) { minDistLow = -diff; idxLow = (int)i; }
     }
 }
 
 void DrawHUD(SCStudyInterfaceRef sc, bool active, const SCString& prefix, int xPos, int yPos, int fontSize, COLORREF color) {
     const int hudLineID = 98765431;
-    if (!active) {
+    if (!active || sc.ArraySize == 0) {
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, hudLineID);
         return;
     }
@@ -91,10 +95,12 @@ void DrawHUD(SCStudyInterfaceRef sc, bool active, const SCString& prefix, int xP
     int xOffsetBars = xPos / 12;
     int startBar = sc.IndexOfFirstVisibleBar + (xOffsetBars < 0 ? 0 : xOffsetBars);
     if (startBar >= sc.ArraySize) startBar = sc.ArraySize - 1;
-    Tool.BeginDateTime = sc.BaseDateTimeIn[startBar > 0 ? startBar : 0];
+    if (startBar < 0) startBar = 0;
+    Tool.BeginDateTime = sc.BaseDateTimeIn[startBar];
     double yPercent = (double)(yPos - 20) / 10.0; 
     Tool.BeginValue = 100.0 - yPercent;
     if (Tool.BeginValue > 99) Tool.BeginValue = 99;
+    if (Tool.BeginValue < 1) Tool.BeginValue = 1;
     Tool.Text.Format("%s ON", prefix.GetChars());
     Tool.Color = color; Tool.FontSize = fontSize; Tool.FontBold = 1;
     Tool.TransparentLabelBackground = 1;
@@ -156,7 +162,7 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
                 int startIdx = (endIdx - shortLineBars < 0) ? 0 : endIdx - shortLineBars;
                 Text.BeginIndex = startIdx; Text.TextAlignment = DT_LEFT | DT_BOTTOM;
             }
-            Text.BeginIndex -= (level.StaggerOffset * 10);
+            Text.BeginIndex -= (level.StaggerOffset * 10); if (Text.BeginIndex < 0) Text.BeginIndex = 0;
             Text.AddMethod = UTAM_ADD_OR_ADJUST;
             sc.UseTool(Text);
         } else sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, labelID);
@@ -166,13 +172,17 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
 void DrawTable(SCStudyInterfaceRef sc, GlobalState* p_State, bool showTable, int xPos, int yPos, 
                int fontSize, int fontColorInt, int bgColorInt, int highlightColorInt,
                int maxLevelsAround, bool forceRedraw) {
-    if (!showTable) {
+    if (!showTable || sc.ArraySize == 0) {
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765432);
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765433);
         p_State->LastHighIdx = -1; p_State->LastLowIdx = -1; p_State->LastPrice = 0;
         return;
     }
-    if (!p_State->HasScanned || p_State->Levels.empty()) return;
+    if (!p_State->HasScanned || p_State->Levels.empty()) {
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765432);
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 98765433);
+        return;
+    }
     double currentPrice = sc.Close[sc.ArraySize - 1];
     int idxHigh, idxLow;
     CalculateHighlights(p_State->Levels, currentPrice, idxHigh, idxLow);
@@ -197,7 +207,8 @@ void DrawTable(SCStudyInterfaceRef sc, GlobalState* p_State, bool showTable, int
             if ((int)i < visibleStart || (int)i > visibleEnd) continue;
             const auto& level = p_State->Levels[i];
             SCString labelStr;
-            labelStr.Format("%s (%s)", (level.Description.GetLength() > 0 ? level.Description.GetChars() : level.Label.GetChars()), level.ChartName.GetChars());
+            const char* desc = level.Description.GetLength() > 0 ? level.Description.GetChars() : level.Label.GetChars();
+            labelStr.Format("%s (%s)", desc, level.ChartName.GetChars());
             if (labelStr.GetLength() > wLabel) labelStr = labelStr.Left(wLabel - 1);
             SCString row;
             row.Format("%-*s %*s\n", wLabel, labelStr.GetChars(), wPrice, sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars());
@@ -212,8 +223,11 @@ void DrawTable(SCStudyInterfaceRef sc, GlobalState* p_State, bool showTable, int
     int xOffsetBars = xPos / 12;
     int startBar = sc.IndexOfFirstVisibleBar + (xOffsetBars < 0 ? 0 : xOffsetBars);
     if (startBar >= sc.ArraySize) startBar = sc.ArraySize - 1;
-    Tool.BeginDateTime = sc.BaseDateTimeIn[startBar > 0 ? startBar : 0];
+    if (startBar < 0) startBar = 0;
+    Tool.BeginDateTime = sc.BaseDateTimeIn[startBar];
     Tool.BeginValue = 100.0 - ((double)yPos / 10.0);
+    if (Tool.BeginValue > 99) Tool.BeginValue = 99;
+    if (Tool.BeginValue < 1) Tool.BeginValue = 1;
     Tool.FontSize = fontSize; Tool.FontFace = "Courier New"; Tool.FontBold = 1;
     Tool.AddMethod = UTAM_ADD_OR_ADJUST;
     Tool.LineNumber = 98765432; Tool.Text = p_State->CachedTableNormal;
@@ -441,7 +455,15 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
     if (!p_State) { p_State = new GlobalState; sc.SetPersistentPointer(1, p_State); }
 
-    if (sc.ArraySize == 0) return;
+    if (sc.ArraySize == 0) {
+        if (p_State->HasScanned) {
+            DrawTable(sc, p_State, false, 0, 0, 0, 0, 0, 0, 0, true);
+            DrawLines(sc, p_State, false, 0, 0, 0, false, 0, 0, true);
+            DrawHUD(sc, false, "", 0, 0, 0, 0);
+            p_State->HasScanned = false;
+        }
+        return;
+    }
 
     if (!p_State->HasInitialized) {
         if (sc.Input[IN_TABLE_BUTTON_NUM].GetInt() == 0 && sc.Input[IN_LINE_BUTTON_NUM].GetInt() == 0) {
@@ -451,7 +473,6 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         p_State->HasInitialized = true;
     }
     SCDateTime now = sc.CurrentSystemDateTime; bool runScan = false;
-    static SCDateTime lastTblTog = 0, lastLinTog = 0;
     auto HandleBtn = [&](int btnIdx, bool& state, SCDateTime& lastToggle) {
         int btnNum = sc.Input[btnIdx].GetInt(); if (btnNum <= 0) return;
         sc.SetCustomStudyControlBarButtonText(btnNum, sc.Input[btnIdx+1].GetString());
@@ -462,8 +483,8 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
             } else sc.SetCustomStudyControlBarButtonEnable(btnNum, state ? 1 : 0);
         }
     };
-    HandleBtn(IN_TABLE_BUTTON_NUM, p_State->IsTableVisible, lastTblTog);
-    HandleBtn(IN_LINE_BUTTON_NUM, p_State->AreLinesVisible, lastLinTog);
+    HandleBtn(IN_TABLE_BUTTON_NUM, p_State->IsTableVisible, p_State->LastTblToggleTime);
+    HandleBtn(IN_LINE_BUTTON_NUM, p_State->AreLinesVisible, p_State->LastLinToggleTime);
     int interval = sc.Input[IN_AUTO_SCAN_INTERVAL].GetInt();
     if (interval > 0 && (now.GetAsDouble() - p_State->LastAutoScanTime.GetAsDouble()) * 86400.0 > (double)interval) {
         runScan = true; p_State->LastAutoScanTime = now;
@@ -489,25 +510,62 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     std::vector<SCString> targetLabels; std::vector<bool> labelFindAll;
     SCString filters = sc.Input[IN_LABEL_FILTERS].GetString();
     if (!filters.IsEmpty()) {
-        char fBuf[1024]; strncpy(fBuf, filters.GetChars(), 1023); fBuf[1023] = '\0'; char* fToken = strtok(fBuf, ",");
-        while (fToken) {
-            while (*fToken == ' ') fToken++; bool findAll = false; char* pipe = strstr(fToken, "|All");
-            if (pipe) { *pipe = '\0'; findAll = true; }
-            if (strlen(fToken) > 0) { targetLabels.push_back(fToken); labelFindAll.push_back(findAll); }
-            fToken = strtok(NULL, ",");
+        SCString current;
+        for (int i = 0; i < filters.GetLength(); ++i) {
+            if (filters[i] == ',') {
+                SCString trimmed = TrimSCString(current);
+                if (!trimmed.IsEmpty()) {
+                    bool findAll = false;
+                    int pipePos = -1;
+                    for (int j = 0; j <= trimmed.GetLength() - 4; ++j) {
+                        if (trimmed[j] == '|' && trimmed[j+1] == 'A' && trimmed[j+2] == 'l' && trimmed[j+3] == 'l') {
+                            pipePos = j; break;
+                        }
+                    }
+                    if (pipePos != -1) { findAll = true; trimmed = trimmed.Left(pipePos); }
+                    targetLabels.push_back(trimmed); labelFindAll.push_back(findAll);
+                }
+                current = "";
+            } else current += filters[i];
+        }
+        SCString trimmed = TrimSCString(current);
+        if (!trimmed.IsEmpty()) {
+            bool findAll = false;
+            int pipePos = -1;
+            for (int j = 0; j <= trimmed.GetLength() - 4; ++j) {
+                if (trimmed[j] == '|' && trimmed[j+1] == 'A' && trimmed[j+2] == 'l' && trimmed[j+3] == 'l') {
+                    pipePos = j; break;
+                }
+            }
+            if (pipePos != -1) { findAll = true; trimmed = trimmed.Left(pipePos); }
+            targetLabels.push_back(trimmed); labelFindAll.push_back(findAll);
         }
     }
     if (targetLabels.empty()) return;
     std::vector<ChartConfig> charts; SCString cfgStr = sc.Input[IN_CHART_CONFIG].GetString();
     if (!cfgStr.IsEmpty()) {
-        char fBuf[1024]; strncpy(fBuf, cfgStr.GetChars(), 1023); fBuf[1023] = '\0'; char* fToken = strtok(fBuf, ","); int priority = 0;
-        while (fToken) {
-            while (*fToken == ' ') fToken++; char* pipe = strchr(fToken, '|');
+        SCString current; int priority = 0;
+        auto AddChart = [&](SCString s) {
+            SCString trimmed = TrimSCString(s);
+            if (trimmed.IsEmpty()) return;
             ChartConfig c; c.Priority = priority++;
-            if (pipe) { *pipe = '\0'; c.ChartNumber = atoi(fToken); c.CustomName = pipe + 1; }
-            else { c.ChartNumber = atoi(fToken); c.CustomName = sc.GetChartSymbol(c.ChartNumber); }
-            if (c.ChartNumber > 0) charts.push_back(c); fToken = strtok(NULL, ",");
+            int pipeIdx = trimmed.IndexOf('|');
+            if (pipeIdx != -1) {
+                c.ChartNumber = atoi(trimmed.Left(pipeIdx).GetChars());
+                c.CustomName = TrimSCString(trimmed.Right(trimmed.GetLength() - pipeIdx - 1));
+            } else {
+                c.ChartNumber = atoi(trimmed.GetChars());
+                const char* sym = sc.GetChartSymbol(c.ChartNumber);
+                if (sym) c.CustomName = sym;
+                else c.CustomName.Format("%d", c.ChartNumber);
+            }
+            if (c.ChartNumber > 0) charts.push_back(c);
+        };
+        for (int i = 0; i < cfgStr.GetLength(); ++i) {
+            if (cfgStr[i] == ',') { AddChart(current); current = ""; }
+            else current += cfgStr[i];
         }
+        AddChart(current);
     } else { charts.push_back({sc.ChartNumber, sc.GetChartSymbol(sc.ChartNumber), 0}); }
     std::vector<LevelEntry> allLevels; std::vector<bool> foundGlobally(targetLabels.size(), false);
     for (auto& c : charts) {
@@ -615,11 +673,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     }
     int dest = sc.Input[IN_OUTPUT_DEST].GetIndex();
     if (dest == 0 || dest == 2) {
-        if (OpenClipboard(NULL)) {
+        if (OpenClipboard((HWND)sc.ChartWindowHandle)) {
             EmptyClipboard(); HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, output.GetLength() + 1);
             if (hMem) {
                 char* pMem = (char*)GlobalLock(hMem);
-                if (pMem) { strcpy(pMem, output.GetChars()); GlobalUnlock(hMem); SetClipboardData(CF_TEXT, hMem); }
+                if (pMem) { memcpy(pMem, output.GetChars(), output.GetLength() + 1); GlobalUnlock(hMem); SetClipboardData(CF_TEXT, hMem); }
                 else GlobalFree(hMem);
             } CloseClipboard();
         }
