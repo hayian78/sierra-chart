@@ -1436,24 +1436,31 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
     // Persistent state for button toggle: 1=ON, 0=OFF, -1=Uninitialized
     int& P_AutoExtendState = sc.GetPersistentInt(55);
+    int& P_LastExtMode     = sc.GetPersistentInt(57);
+
+    bool modeChanged = (P_LastExtMode != mode);
+    if (isFirstRunAfterLoad) modeChanged = true;
+    P_LastExtMode = mode;
 
     switch (mode)
     {
         case 0: // Disabled
             autoExtendLatest = false;
             P_AutoExtendState = 0;
-            if (btnID > 0)
+            if (btnID > 0 && modeChanged)
             {
                  sc.SetCustomStudyControlBarButtonText(btnID, "BZ Ext: Disabled");
+                 sc.SetCustomStudyControlBarButtonEnable(btnID, 0);
             }
             break;
 
         case 1: // Always Enabled
             autoExtendLatest = true;
             P_AutoExtendState = 1;
-            if (btnID > 0)
+            if (btnID > 0 && modeChanged)
             {
                  sc.SetCustomStudyControlBarButtonText(btnID, "BZ Ext: Always On");
+                 sc.SetCustomStudyControlBarButtonEnable(btnID, 0);
             }
             break;
 
@@ -1461,9 +1468,9 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             if (btnID > 0)
             {
                 // Init
-                if (P_AutoExtendState == -1 || isFirstRunAfterLoad)
+                if (P_AutoExtendState == -1 || modeChanged)
                 {
-                    P_AutoExtendState = 1; // Default ON
+                    if (P_AutoExtendState == -1) P_AutoExtendState = 1; // Default ON
                     sc.SetCustomStudyControlBarButtonText(btnID, P_AutoExtendState ? "BZ Ext: ON" : "BZ Ext: OFF");
                     sc.SetCustomStudyControlBarButtonEnable(btnID, 1);
                 }
@@ -1471,6 +1478,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 // Handle Click
                 if (sc.MenuEventID == btnID)
                 {
+                    sc.MenuEventID = 0; // Prevent infinite loop
                     P_AutoExtendState = !P_AutoExtendState;
                     sc.SetCustomStudyControlBarButtonText(btnID, P_AutoExtendState ? "BZ Ext: ON" : "BZ Ext: OFF");
                     // Inputs change detection below will trigger redraw automatically
@@ -1500,6 +1508,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         // Handle click: Force redraw by setting the Force Redraw Now flag
         if (sc.MenuEventID == refreshBtnID)
         {
+            sc.MenuEventID = 0; // Prevent infinite loop
             sc.Input[IN_FORCE_REDRAW_NOW].SetYesNo(1); // Trigger recalc
         }
     }
