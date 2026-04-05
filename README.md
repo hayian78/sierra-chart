@@ -16,7 +16,8 @@ A collection of high-performance, custom ACSIL (Advanced Custom Study Interface 
 - **Intent**: Projects dynamic balance and premium/discount zones derived from user-drawn anchor rectangles.
 - **Features**: 
   - On-the-fly configuration via chart drawing text labels (e.g., `BZ +6x,-2x`).
-  - Optimized rendering: filters and processes only on-screen anchors.
+  - **Zero-Lag Architecture**: Highly optimized AnchorID tracking and targeted redraws eliminate UI flickering and scrolling lag.
+  - **O(1) Gap Detection**: Constant-time mathematical boundary checking for high-precision ES/MES scalping alerts without the overhead of iterative looping.
   - Multi-tier formatting: "Nice" vs. "Basic" modes with midlines, price labels, and distinct color bands.
 
 ### 3. Level Aggregator (`LevelAggregator.cpp`)
