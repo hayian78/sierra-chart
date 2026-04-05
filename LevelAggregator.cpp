@@ -428,6 +428,16 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         
         return;
     }
+
+    if (sc.LastCallToFunction) {
+        GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
+        if (p_State) {
+            delete p_State;
+            sc.SetPersistentPointer(1, nullptr);
+        }
+        return;
+    }
+
     GlobalState* p_State = (GlobalState*)sc.GetPersistentPointer(1);
     if (!p_State) { p_State = new GlobalState; sc.SetPersistentPointer(1, p_State); }
     if (!p_State->HasInitialized) {
