@@ -110,7 +110,7 @@ void DrawHUD(SCStudyInterfaceRef sc, bool active, const SCString& prefix, int xP
 
 void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines, 
                int lineStyle, int lineWidth, COLORREF lineColor, bool showLabels,
-               int drawingMode, int shortLineBars, bool forceRedraw) {
+               int drawingMode, int shortLineBars, int labelMargin, bool forceRedraw) {
     const int baseLineID = 98765500;
     const int maxLevels = 100;
     if (!showLines || !p_State->HasScanned || p_State->Levels.empty()) {
@@ -155,13 +155,11 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
             Text.Text.Format("%s (%s)", (level.Description.GetLength() > 0 ? level.Description.GetChars() : level.Label.GetChars()), level.ChartName.GetChars());
             Text.BeginValue = level.Price; Text.Color = lineColor;
             Text.FontSize = 10; Text.TransparentLabelBackground = 1;
-            if (drawingMode == 0) {
-                Text.BeginIndex = sc.ArraySize - 1; Text.TextAlignment = DT_RIGHT | DT_BOTTOM;
-            } else {
-                int endIdx = sc.ArraySize - 1;
-                int startIdx = (endIdx - shortLineBars < 0) ? 0 : endIdx - shortLineBars;
-                Text.BeginIndex = startIdx; Text.TextAlignment = DT_LEFT | DT_BOTTOM;
-            }
+            
+            // Positioning labels in the right margin
+            Text.BeginIndex = (sc.ArraySize - 1) + labelMargin; 
+            Text.TextAlignment = DT_LEFT | DT_BOTTOM;
+            
             Text.BeginIndex -= (level.StaggerOffset * 10); if (Text.BeginIndex < 0) Text.BeginIndex = 0;
             Text.AddMethod = UTAM_ADD_OR_ADJUST;
             sc.UseTool(Text);
@@ -243,7 +241,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         IN_HDR_CORE = 0, IN_TABLE_BUTTON_NUM, IN_TABLE_BUTTON_TEXT, IN_LINE_BUTTON_NUM, IN_LINE_BUTTON_TEXT,
         IN_LINE_TYPE, IN_DISPLAY_MODE, IN_HUD_PREFIX, IN_LABEL_FILTERS, IN_CHART_CONFIG, IN_AUTO_SCAN_INTERVAL,
         IN_CLUSTER_THRESHOLD, IN_CLUSTER_HANDLING, IN_HDR_TABLE, IN_TABLE_X, IN_TABLE_Y, IN_TABLE_RANGE_LEVELS, IN_FONT_SIZE, IN_FONT_COLOR, IN_BG_COLOR, IN_HIGHLIGHT_COLOR,
-        IN_HDR_LINE_SETTINGS, IN_LINE_STYLE, IN_LINE_WIDTH, IN_LINE_COLOR, IN_SHOW_LINE_LABELS, IN_SHORT_LINE_BARS,
+        IN_HDR_LINE_SETTINGS, IN_LINE_STYLE, IN_LINE_WIDTH, IN_LINE_COLOR, IN_SHOW_LINE_LABELS, IN_SHORT_LINE_BARS, IN_LABEL_MARGIN,
         IN_HDR_SORT, IN_SORT_BY_1, IN_SORT_BY_2,
         IN_HDR_EXPORT, IN_EXPORT_ON_SCAN, IN_OUTPUT_DEST, IN_FILE_PATH, IN_USE_TEMPLATE, IN_TEMPLATE_PATH, IN_INCLUDE_CHART_NAME, IN_INCLUDE_DESCRIPTION
     };
@@ -388,6 +386,11 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         sc.Input[IN_SHORT_LINE_BARS].SetInt(20);
         sc.Input[IN_SHORT_LINE_BARS].SetIntLimits(1, 500);
         sc.Input[IN_SHORT_LINE_BARS].DisplayOrder = order++;
+
+        sc.Input[IN_LABEL_MARGIN].Name = "Label Margin (Bars Beyond Right)";
+        sc.Input[IN_LABEL_MARGIN].SetInt(5);
+        sc.Input[IN_LABEL_MARGIN].SetIntLimits(0, 100);
+        sc.Input[IN_LABEL_MARGIN].DisplayOrder = order++;
         
         // ===== SORT SETTINGS =====
         sc.Input[IN_HDR_SORT].Name = "===== SORT SETTINGS =====";
@@ -458,7 +461,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     if (sc.ArraySize == 0) {
         if (p_State->HasScanned) {
             DrawTable(sc, p_State, false, 0, 0, 0, 0, 0, 0, 0, true);
-            DrawLines(sc, p_State, false, 0, 0, 0, false, 0, 0, true);
+            DrawLines(sc, p_State, false, 0, 0, 0, false, 0, 0, 0, true);
             DrawHUD(sc, false, "", 0, 0, 0, 0);
             p_State->HasScanned = false;
         }
@@ -501,7 +504,8 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
               sc.Input[IN_FONT_SIZE].GetInt(), sc.Input[IN_FONT_COLOR].GetColor(), sc.Input[IN_BG_COLOR].GetColor(), 
               sc.Input[IN_HIGHLIGHT_COLOR].GetColor(), sc.Input[IN_TABLE_RANGE_LEVELS].GetInt(), p_State->ForceRedraw);
     DrawLines(sc, p_State, p_State->AreLinesVisible, sc.Input[IN_LINE_STYLE].GetIndex(), sc.Input[IN_LINE_WIDTH].GetInt(),
-              sc.Input[IN_LINE_COLOR].GetColor(), sc.Input[IN_SHOW_LINE_LABELS].GetYesNo(), modeLineType, sc.Input[IN_SHORT_LINE_BARS].GetInt(), p_State->ForceRedraw);
+              sc.Input[IN_LINE_COLOR].GetColor(), sc.Input[IN_SHOW_LINE_LABELS].GetYesNo(), modeLineType, sc.Input[IN_SHORT_LINE_BARS].GetInt(), 
+              sc.Input[IN_LABEL_MARGIN].GetInt(), p_State->ForceRedraw);
     DrawHUD(sc, p_State->AreLinesVisible, sc.Input[IN_HUD_PREFIX].GetString(), sc.Input[IN_TABLE_X].GetInt(), sc.Input[IN_TABLE_Y].GetInt(), sc.Input[IN_FONT_SIZE].GetInt(), sc.Input[IN_FONT_COLOR].GetColor());
     p_State->LastArraySize = sc.ArraySize;
     if (!runScan && !p_State->ForceRedraw) return;
