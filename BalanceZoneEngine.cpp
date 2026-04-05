@@ -935,29 +935,29 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
     // ---- Cleanup on unload ----
     if (sc.LastCallToFunction)
     {
-        auto* prevAnchors = static_cast<std::vector<int>*>(sc.GetPersistentPointer(1));
+        auto* prevAnchors = static_cast<std::vector<int>*>(sc.GetPersistentPointer(101));
         if (prevAnchors != nullptr)
         {
             delete prevAnchors;
-            sc.SetPersistentPointer(1, nullptr);
+            sc.SetPersistentPointer(101, nullptr);
         }
 
-        auto* pCache = static_cast<BZLabelCache*>(sc.GetPersistentPointer(2));
+        auto* pCache = static_cast<BZLabelCache*>(sc.GetPersistentPointer(102));
         if (pCache != nullptr)
         {
             delete pCache;
-            sc.SetPersistentPointer(2, nullptr);
+            sc.SetPersistentPointer(102, nullptr);
         }
         
         // Clear the previous zone label owner tracking
-        sc.SetPersistentPointer(3, nullptr);
+        sc.SetPersistentPointer(103, nullptr);
         
         // Stage 1: Persistent Tracker Cleanup
-        auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(100));
+        auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(104));
         if (pTracker != nullptr)
         {
             delete pTracker;
-            sc.SetPersistentPointer(100, nullptr);
+            sc.SetPersistentPointer(104, nullptr);
         }
 
         // NOTE: Zone hash cache (persistent pointer 4) cleanup removed - optimization disabled.
@@ -971,12 +971,13 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
     SCSubgraphRef SG_ZoneDist    = sc.Subgraph[27];
 
     // ---- Runtime config ----
-    auto* pCache = static_cast<BZLabelCache*>(sc.GetPersistentPointer(2));
-    if (pCache == nullptr)
+    auto* pCache = static_cast<BZLabelCache*>(sc.GetPersistentPointer(102));
+    if (!pCache)
     {
-        pCache = new BZLabelCache();
-        sc.SetPersistentPointer(2, pCache);
+        pCache = new BZLabelCache;
+        sc.SetPersistentPointer(102, pCache);
     }
+
     
     // NOTE: Zone hash cache (persistent pointer 4) was removed - optimization disabled.
 
@@ -1714,8 +1715,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     // force redraw even if inputs didn't change.
     // ------------------------------------------------------------------
 
-    auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(100));
-    if (!pTracker) { pTracker = new AnchorIDTracker; sc.SetPersistentPointer(100, pTracker); }
+    auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(104));
+    if (!pTracker) { pTracker = new AnchorIDTracker; sc.SetPersistentPointer(104, pTracker); }
 
     auto RegisterDrawingID = [&](int anchorLine, int drawingID) { pTracker->activeMap[anchorLine].push_back(drawingID); };
     auto ExecuteSmartCleanup = [&](int anchorLine) {
@@ -1732,11 +1733,11 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     auto DeleteAllForAnchor = [&](int anchorLine) { ExecuteSmartCleanup(anchorLine); };
 
     // Persist previous anchor list for cleanup
-    auto* prevAnchors = static_cast<std::vector<int>*>(sc.GetPersistentPointer(1));
+    auto* prevAnchors = static_cast<std::vector<int>*>(sc.GetPersistentPointer(101));
     if (prevAnchors == nullptr)
     {
         prevAnchors = new std::vector<int>();
-        sc.SetPersistentPointer(1, prevAnchors);
+        sc.SetPersistentPointer(101, prevAnchors);
     }
 
     auto ClearAlertSubgraphs = [&]()
