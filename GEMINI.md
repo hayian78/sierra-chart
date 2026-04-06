@@ -2,6 +2,7 @@
 
 ## 🎯 Global Directives
 - **Brevity Level**: 10/10. Assume Senior IT Manager/Expert context.
+- **Technical Reviews**: Strictly scope reviews (by @coder, @lead, etc.) to the code just changed/added. Do not perform a full-file or full-project audit unless explicitly requested.
 - **Communication style**:
   - No conversational fillers (e.g., "Sure," "I can help," "Here is the code").
   - No moralizing or safety preambles unless a critical execution risk exists.

@@ -74,76 +74,80 @@ enum InputIx
 {
     IN_HELP_URL = 0,
 
+    // Pillar 1: CORE CONTROL (Auction Definition)
     IN_HDR_CORE,
     IN_ANCHOR_LABELS,
     IN_ONLY_MOST_RECENT,
-    IN_SHOW_RECT_PRICES,
-    IN_LABEL_DECIMALS,
-    IN_LABEL_BAR_OFFSET,
-    IN_LABEL_TEXT_COLOR,
+    IN_TIER1_COUNT,
+    IN_TIER2_COUNT,
 
+    // Pillar 2: LOGIC & RANGE (Extension Strategy)
     IN_HDR_RANGE,
     IN_ENABLE_UP,
     IN_ENABLE_DOWN,
     IN_MAX_UP_GROUPS,     // 0..4 => 0/2/6/14/30
     IN_MAX_DOWN_GROUPS,   // 0..4 => 0/2/6/14/30
+    IN_AUTO_EXTEND_MODE,
+    IN_AUTO_EXTEND_BUTTON_ID,
 
-    IN_HDR_FMT,           // "Balance Zone Formatting"
+    // Pillar 3: ZONE VISUALS (Execution Clarity)
+    IN_HDR_FMT,           // "Balance Zone Visuals"
     IN_BORDER_COLOR_MODE, // 0=same as fill, 1=custom
     IN_CUSTOM_BORDER_COLOR,
+    
+    IN_HDR_UP,
+    IN_UP_FILL_12,
+    IN_UP_TRANS_12,
+    IN_UP_FILL_36,
+    IN_UP_TRANS_36,
+    IN_UP_FILL_714,
+    IN_UP_TRANS_714,
+    IN_UP_FILL_1530,
+    IN_UP_TRANS_1530,
 
-    // Zone-name labels (zone bands; latest anchor only)
-    IN_ZONE_NAME_LABEL_MODE,   // 0=Off,1=Tier 1,2=Tier 1 & 2
+    IN_HDR_DOWN,
+    IN_DN_FILL_12,
+    IN_DN_TRANS_12,
+    IN_DN_FILL_36,
+    IN_DN_TRANS_36,
+    IN_DN_FILL_714,
+    IN_DN_TRANS_714,
+    IN_DN_FILL_1530,
+    IN_DN_TRANS_1530,
+
+    // Pillar 4: ANNOTATIONS (Precise Context)
+    IN_HDR_ANNOTATIONS,
+    IN_SHOW_RECT_PRICES,
+    IN_LABEL_DECIMALS,
+    IN_LABEL_BAR_OFFSET,
+    IN_LABEL_TEXT_COLOR,
+    
+    IN_ZONE_NAME_LABEL_MODE,
     IN_ZONE_LABEL_FONT_SIZE,
     IN_ZONE_LABEL_FONT_COLOR,
-    IN_ZONE_LABEL_LEFT_OFFSET, // bars to the right
+    IN_ZONE_LABEL_LEFT_OFFSET,
     IN_COST_BASIS_ZONE_LABEL,
     IN_UP_ZONE_LABEL_TEMPLATE,
     IN_DOWN_ZONE_LABEL_TEMPLATE,
 
-    IN_HDR_UP,
-    IN_UP_TRANS_12,
-    IN_UP_FILL_12,
-    IN_UP_TRANS_36,
-    IN_UP_FILL_36,
-    IN_UP_TRANS_714,
-    IN_UP_FILL_714,
-    IN_UP_TRANS_1530,
-    IN_UP_FILL_1530,
-
-    IN_HDR_DOWN,
-    IN_DN_TRANS_12,
-    IN_DN_FILL_12,
-    IN_DN_TRANS_36,
-    IN_DN_FILL_36,
-    IN_DN_TRANS_714,
-    IN_DN_FILL_714,
-    IN_DN_TRANS_1530,
-    IN_DN_FILL_1530,
-
     IN_HDR_MIDLINE,
     IN_DRAW_MIDLINE,
-    IN_MIDLINE_STYLE,      // 0=None,1=Solid,2=Dash,3=Dot
-    IN_MIDLINE_COLOR_MODE, // 0=same as fill, 1=custom
+    IN_MIDLINE_STYLE,
+    IN_MIDLINE_COLOR_MODE,
     IN_CUSTOM_MIDLINE_COLOR,
     IN_SHOW_MIDLINE_PRICE,
     IN_MIDLINE_WIDTH,
 
+    // Pillar 5: ENGINE & ALERTS (System Backend)
     IN_HDR_PERF,
-    IN_AUTO_REDRAW,
-    IN_FORCE_REDRAW_NOW,
-    IN_CLEAR_OLD_PROJECTIONS,
-
-    IN_HDR_SCOPE,
     IN_PROCESS_VISIBLE_ONLY,
-    IN_TIER1_COUNT,
-    IN_TIER2_COUNT,
-    IN_AUTO_EXTEND_MODE,
-    IN_AUTO_EXTEND_BUTTON_ID,
+    IN_AUTO_REDRAW,
+    IN_CLEAR_OLD_PROJECTIONS,
+    IN_FORCE_REDRAW_NOW,
     IN_REFRESH_BUTTON_ID,
 
     IN_HDR_ALERTS,
-    IN_ALERT_PRICE_SOURCE, // 0=Last Trade (fallback Close), 1=Bar Close
+    IN_ALERT_PRICE_SOURCE,
     IN_ALERT_USE_GAP_DETECTION,
     IN_ALERT_INCLUDE_BAR_HL
 };
@@ -599,12 +603,13 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_HELP_URL].SetString("https://tinyurl.com/BalanceZoneEngine");
         sc.Input[IN_HELP_URL].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_HDR_CORE].Name = "===== CORE CONTROL =====";
+        // Pillar 1: CORE CONTROL (Auction Definition)
+        sc.Input[IN_HDR_CORE].Name = "===== 1. CORE CONTROL =====";
         sc.Input[IN_HDR_CORE].SetInt(0);
         sc.Input[IN_HDR_CORE].SetIntLimits(0, 0);
         sc.Input[IN_HDR_CORE].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_ANCHOR_LABELS].Name = "Anchor Rectangle Label Text(s) (comma-separated base labels, exact match)";
+        sc.Input[IN_ANCHOR_LABELS].Name = "Anchor Rectangle Label Text(s) (comma-separated)";
         sc.Input[IN_ANCHOR_LABELS].SetString("BZ");
         sc.Input[IN_ANCHOR_LABELS].DisplayOrder = dispOrder++;
 
@@ -612,38 +617,21 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_ONLY_MOST_RECENT].SetYesNo(0);
         sc.Input[IN_ONLY_MOST_RECENT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_SHOW_RECT_PRICES].Name = "Show Price on Top and Bottom of Rectangles";
-        sc.Input[IN_SHOW_RECT_PRICES].SetYesNo(1);
-        sc.Input[IN_SHOW_RECT_PRICES].DisplayOrder = dispOrder++;
+        sc.Input[IN_TIER1_COUNT].Name = "Tier 1 (Focus) Anchors: Latest N";
+        sc.Input[IN_TIER1_COUNT].SetInt(1);
+        sc.Input[IN_TIER1_COUNT].SetIntLimits(1, 100);
+        sc.Input[IN_TIER1_COUNT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_LABEL_DECIMALS].Name = "Label Decimal Places (default 2)";
-        sc.Input[IN_LABEL_DECIMALS].SetInt(2);
-        sc.Input[IN_LABEL_DECIMALS].SetIntLimits(0, 8);
-        sc.Input[IN_LABEL_DECIMALS].DisplayOrder = dispOrder++;
+        sc.Input[IN_TIER2_COUNT].Name = "Tier 2 (Context) Anchors: Next M";
+        sc.Input[IN_TIER2_COUNT].SetInt(3);
+        sc.Input[IN_TIER2_COUNT].SetIntLimits(0, 100);
+        sc.Input[IN_TIER2_COUNT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_LABEL_BAR_OFFSET].Name = "Label Bar Offset (+/- from RIGHT edge)";
-        sc.Input[IN_LABEL_BAR_OFFSET].SetInt(2);
-        sc.Input[IN_LABEL_BAR_OFFSET].SetIntLimits(-5000, 5000);
-        sc.Input[IN_LABEL_BAR_OFFSET].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_LABEL_TEXT_COLOR].Name = "Label Color";
-        sc.Input[IN_LABEL_TEXT_COLOR].SetColor(RGB(255, 255, 255));
-        sc.Input[IN_LABEL_TEXT_COLOR].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_HDR_RANGE].Name = "===== PROJECTION RANGE =====";
+        // Pillar 2: LOGIC & RANGE (Extension Strategy)
+        sc.Input[IN_HDR_RANGE].Name = "===== 2. LOGIC & RANGE =====";
         sc.Input[IN_HDR_RANGE].SetInt(0);
         sc.Input[IN_HDR_RANGE].SetIntLimits(0, 0);
         sc.Input[IN_HDR_RANGE].DisplayOrder = dispOrder++;
-        
-         // Moved Auto-Extend inputs here visually and physically
-        sc.Input[IN_AUTO_EXTEND_MODE].Name = "Auto-Extend Latest Anchor Mode";
-        sc.Input[IN_AUTO_EXTEND_MODE].SetCustomInputStrings("Disabled;Always Enabled;Control Bar Button");
-        sc.Input[IN_AUTO_EXTEND_MODE].SetCustomInputIndex(0); // Default Disabled
-        sc.Input[IN_AUTO_EXTEND_MODE].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].Name = "Control Bar Button ID (For Button Mode)";
-        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].SetInt(0);
-        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].DisplayOrder = dispOrder++;
 
         sc.Input[IN_ENABLE_UP].Name = "Enable Up Projections";
         sc.Input[IN_ENABLE_UP].SetYesNo(1);
@@ -663,31 +651,129 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_MAX_DOWN_GROUPS].SetIntLimits(0, 4);
         sc.Input[IN_MAX_DOWN_GROUPS].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_HDR_FMT].Name = "===== BALANCE ZONE FORMATTING =====";
+        sc.Input[IN_AUTO_EXTEND_MODE].Name = "Auto-Extend Latest Anchor Mode";
+        sc.Input[IN_AUTO_EXTEND_MODE].SetCustomInputStrings("Disabled;Always Enabled;Control Bar Button");
+        sc.Input[IN_AUTO_EXTEND_MODE].SetCustomInputIndex(0);
+        sc.Input[IN_AUTO_EXTEND_MODE].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].Name = "Control Bar Button ID (For Button Mode)";
+        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].SetInt(0);
+        sc.Input[IN_AUTO_EXTEND_BUTTON_ID].DisplayOrder = dispOrder++;
+
+        // Pillar 3: ZONE VISUALS (Execution Clarity)
+        sc.Input[IN_HDR_FMT].Name = "===== 3. ZONE VISUALS =====";
         sc.Input[IN_HDR_FMT].SetInt(0);
         sc.Input[IN_HDR_FMT].SetIntLimits(0, 0);
         sc.Input[IN_HDR_FMT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_BORDER_COLOR_MODE].Name = "Border Color";
-        sc.Input[IN_BORDER_COLOR_MODE].SetCustomInputStrings("Fill;Custom");
+        sc.Input[IN_BORDER_COLOR_MODE].Name = "Border Color Mode";
+        sc.Input[IN_BORDER_COLOR_MODE].SetCustomInputStrings("Same as Fill;Custom");
         sc.Input[IN_BORDER_COLOR_MODE].SetCustomInputIndex(1);
-        sc.Input[IN_BORDER_COLOR_MODE].SetIntLimits(0, 1);
         sc.Input[IN_BORDER_COLOR_MODE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_CUSTOM_BORDER_COLOR].Name = "Custom Border Color";
         sc.Input[IN_CUSTOM_BORDER_COLOR].SetColor(RGB(255, 255, 255));
         sc.Input[IN_CUSTOM_BORDER_COLOR].DisplayOrder = dispOrder++;
 
-        // ---- Zone Name Labels (zone bands; latest anchor only) ----
+        sc.Input[IN_HDR_UP].Name = "--- Up Zones ---";
+        sc.Input[IN_HDR_UP].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_FILL_12].Name = "Up Fill Color 1-2";
+        sc.Input[IN_UP_FILL_12].SetColor(RGB(0, 255, 0));
+        sc.Input[IN_UP_FILL_12].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_TRANS_12].Name = "Up Transparency 1-2 (0-100)";
+        sc.Input[IN_UP_TRANS_12].SetInt(75);
+        sc.Input[IN_UP_TRANS_12].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_FILL_36].Name = "Up Fill Color 3-6";
+        sc.Input[IN_UP_FILL_36].SetColor(RGB(255, 0, 255));
+        sc.Input[IN_UP_FILL_36].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_TRANS_36].Name = "Up Transparency 3-6";
+        sc.Input[IN_UP_TRANS_36].SetInt(80);
+        sc.Input[IN_UP_TRANS_36].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_FILL_714].Name = "Up Fill Color 7-14";
+        sc.Input[IN_UP_FILL_714].SetColor(RGB(0, 255, 64));
+        sc.Input[IN_UP_FILL_714].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_TRANS_714].Name = "Up Transparency 7-14";
+        sc.Input[IN_UP_TRANS_714].SetInt(85);
+        sc.Input[IN_UP_TRANS_714].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_FILL_1530].Name = "Up Fill Color 15-30";
+        sc.Input[IN_UP_FILL_1530].SetColor(RGB(255, 255, 255));
+        sc.Input[IN_UP_FILL_1530].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_UP_TRANS_1530].Name = "Up Transparency 15-30";
+        sc.Input[IN_UP_TRANS_1530].SetInt(70);
+        sc.Input[IN_UP_TRANS_1530].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_HDR_DOWN].Name = "--- Down Zones ---";
+        sc.Input[IN_HDR_DOWN].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_FILL_12].Name = "Down Fill Color 1-2";
+        sc.Input[IN_DN_FILL_12].SetColor(RGB(255, 0, 0));
+        sc.Input[IN_DN_FILL_12].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_TRANS_12].Name = "Down Transparency 1-2";
+        sc.Input[IN_DN_TRANS_12].SetInt(75);
+        sc.Input[IN_DN_TRANS_12].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_FILL_36].Name = "Down Fill Color 3-6";
+        sc.Input[IN_DN_FILL_36].SetColor(RGB(0, 255, 255));
+        sc.Input[IN_DN_FILL_36].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_TRANS_36].Name = "Down Transparency 3-6";
+        sc.Input[IN_DN_TRANS_36].SetInt(80);
+        sc.Input[IN_DN_TRANS_36].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_FILL_714].Name = "Down Fill Color 7-14";
+        sc.Input[IN_DN_FILL_714].SetColor(RGB(255, 0, 0));
+        sc.Input[IN_DN_FILL_714].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_TRANS_714].Name = "Down Transparency 7-14";
+        sc.Input[IN_DN_TRANS_714].SetInt(85);
+        sc.Input[IN_DN_TRANS_714].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_FILL_1530].Name = "Down Fill Color 15-30";
+        sc.Input[IN_DN_FILL_1530].SetColor(RGB(255, 255, 255));
+        sc.Input[IN_DN_FILL_1530].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_DN_TRANS_1530].Name = "Down Transparency 15-30";
+        sc.Input[IN_DN_TRANS_1530].SetInt(70);
+        sc.Input[IN_DN_TRANS_1530].DisplayOrder = dispOrder++;
+
+        // Pillar 4: ANNOTATIONS (Precise Context)
+        sc.Input[IN_HDR_ANNOTATIONS].Name = "===== 4. ANNOTATIONS =====";
+        sc.Input[IN_HDR_ANNOTATIONS].SetInt(0);
+        sc.Input[IN_HDR_ANNOTATIONS].SetIntLimits(0, 0);
+        sc.Input[IN_HDR_ANNOTATIONS].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_SHOW_RECT_PRICES].Name = "Show Price on Top/Bottom of Rectangles";
+        sc.Input[IN_SHOW_RECT_PRICES].SetYesNo(1);
+        sc.Input[IN_SHOW_RECT_PRICES].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_LABEL_DECIMALS].Name = "Label Decimal Places";
+        sc.Input[IN_LABEL_DECIMALS].SetInt(2);
+        sc.Input[IN_LABEL_DECIMALS].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_LABEL_BAR_OFFSET].Name = "Price Label Bar Offset (from Right)";
+        sc.Input[IN_LABEL_BAR_OFFSET].SetInt(2);
+        sc.Input[IN_LABEL_BAR_OFFSET].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_LABEL_TEXT_COLOR].Name = "Price Label Color";
+        sc.Input[IN_LABEL_TEXT_COLOR].SetColor(RGB(255, 255, 255));
+        sc.Input[IN_LABEL_TEXT_COLOR].DisplayOrder = dispOrder++;
+
         sc.Input[IN_ZONE_NAME_LABEL_MODE].Name = "Zone Name Labels";
         sc.Input[IN_ZONE_NAME_LABEL_MODE].SetCustomInputStrings("Off;Tier 1 (Focus);Tier 1 & 2 (Focus/Context)");
         sc.Input[IN_ZONE_NAME_LABEL_MODE].SetCustomInputIndex(1);
-        sc.Input[IN_ZONE_NAME_LABEL_MODE].SetIntLimits(0, 2);
         sc.Input[IN_ZONE_NAME_LABEL_MODE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_ZONE_LABEL_FONT_SIZE].Name = "Zone Name Label Font Size";
         sc.Input[IN_ZONE_LABEL_FONT_SIZE].SetInt(12);
-        sc.Input[IN_ZONE_LABEL_FONT_SIZE].SetIntLimits(6, 36);
         sc.Input[IN_ZONE_LABEL_FONT_SIZE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_ZONE_LABEL_FONT_COLOR].Name = "Zone Name Label Font Color";
@@ -696,7 +782,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
 
         sc.Input[IN_ZONE_LABEL_LEFT_OFFSET].Name = "Zone Name Label Left Offset (Bars)";
         sc.Input[IN_ZONE_LABEL_LEFT_OFFSET].SetInt(2);
-        sc.Input[IN_ZONE_LABEL_LEFT_OFFSET].SetIntLimits(-5000, 5000);
         sc.Input[IN_ZONE_LABEL_LEFT_OFFSET].DisplayOrder = dispOrder++;
 
         sc.Input[IN_COST_BASIS_ZONE_LABEL].Name = "Cost Basis Zone Label";
@@ -711,92 +796,7 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_DOWN_ZONE_LABEL_TEMPLATE].SetString("Discount x{X}");
         sc.Input[IN_DOWN_ZONE_LABEL_TEMPLATE].DisplayOrder = dispOrder++;
 
-
-        sc.Input[IN_HDR_UP].Name = "===== UP ZONES =====";
-        sc.Input[IN_HDR_UP].SetInt(0);
-        sc.Input[IN_HDR_UP].SetIntLimits(0, 0);
-        sc.Input[IN_HDR_UP].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_TRANS_12].Name = "Up Zones Transparency 1-2 (0=opaque..100=invisible)";
-        sc.Input[IN_UP_TRANS_12].SetInt(75);
-        sc.Input[IN_UP_TRANS_12].SetIntLimits(0, 100);
-        sc.Input[IN_UP_TRANS_12].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_FILL_12].Name = "Up Zones Fill Color 1-2";
-        sc.Input[IN_UP_FILL_12].SetColor(RGB(0, 255, 0));
-        sc.Input[IN_UP_FILL_12].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_TRANS_36].Name = "Up Zones Transparency 3-6";
-        sc.Input[IN_UP_TRANS_36].SetInt(80);
-        sc.Input[IN_UP_TRANS_36].SetIntLimits(0, 100);
-        sc.Input[IN_UP_TRANS_36].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_FILL_36].Name = "Up Zones Fill Color 3-6";
-        sc.Input[IN_UP_FILL_36].SetColor(RGB(255, 0, 255));
-        sc.Input[IN_UP_FILL_36].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_TRANS_714].Name = "Up Zones Transparency 7-14";
-        sc.Input[IN_UP_TRANS_714].SetInt(85);
-        sc.Input[IN_UP_TRANS_714].SetIntLimits(0, 100);
-        sc.Input[IN_UP_TRANS_714].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_FILL_714].Name = "Up Zones Fill Color 7-14";
-        sc.Input[IN_UP_FILL_714].SetColor(RGB(0, 255, 64));
-        sc.Input[IN_UP_FILL_714].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_TRANS_1530].Name = "Up Zones Transparency 15-30";
-        sc.Input[IN_UP_TRANS_1530].SetInt(70);
-        sc.Input[IN_UP_TRANS_1530].SetIntLimits(0, 100);
-        sc.Input[IN_UP_TRANS_1530].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_UP_FILL_1530].Name = "Up Zones Fill Color 15-30";
-        sc.Input[IN_UP_FILL_1530].SetColor(RGB(255, 255, 255));
-        sc.Input[IN_UP_FILL_1530].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_HDR_DOWN].Name = "===== DOWN ZONES =====";
-        sc.Input[IN_HDR_DOWN].SetInt(0);
-        sc.Input[IN_HDR_DOWN].SetIntLimits(0, 0);
-        sc.Input[IN_HDR_DOWN].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_TRANS_12].Name = "Down Zones Transparency 1-2 (0=opaque..100=invisible)";
-        sc.Input[IN_DN_TRANS_12].SetInt(75);
-        sc.Input[IN_DN_TRANS_12].SetIntLimits(0, 100);
-        sc.Input[IN_DN_TRANS_12].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_FILL_12].Name = "Down Zones Fill Color 1-2";
-        sc.Input[IN_DN_FILL_12].SetColor(RGB(255, 0, 0));
-        sc.Input[IN_DN_FILL_12].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_TRANS_36].Name = "Down Zones Transparency 3-6";
-        sc.Input[IN_DN_TRANS_36].SetInt(80);
-        sc.Input[IN_DN_TRANS_36].SetIntLimits(0, 100);
-        sc.Input[IN_DN_TRANS_36].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_FILL_36].Name = "Down Zones Fill Color 3-6";
-        sc.Input[IN_DN_FILL_36].SetColor(RGB(0, 255, 255));
-        sc.Input[IN_DN_FILL_36].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_TRANS_714].Name = "Down Zones Transparency 7-14";
-        sc.Input[IN_DN_TRANS_714].SetInt(85);
-        sc.Input[IN_DN_TRANS_714].SetIntLimits(0, 100);
-        sc.Input[IN_DN_TRANS_714].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_FILL_714].Name = "Down Zones Fill Color 7-14";
-        sc.Input[IN_DN_FILL_714].SetColor(RGB(255, 0, 0));
-        sc.Input[IN_DN_FILL_714].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_TRANS_1530].Name = "Down Zones Transparency 15-30";
-        sc.Input[IN_DN_TRANS_1530].SetInt(70);
-        sc.Input[IN_DN_TRANS_1530].SetIntLimits(0, 100);
-        sc.Input[IN_DN_TRANS_1530].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_DN_FILL_1530].Name = "Down Zones Fill Color 15-30";
-        sc.Input[IN_DN_FILL_1530].SetColor(RGB(255, 255, 255));
-        sc.Input[IN_DN_FILL_1530].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_HDR_MIDLINE].Name = "===== MIDLINE APPEARANCE =====";
-        sc.Input[IN_HDR_MIDLINE].SetInt(0);
-        sc.Input[IN_HDR_MIDLINE].SetIntLimits(0, 0);
+        sc.Input[IN_HDR_MIDLINE].Name = "--- Midlines ---";
         sc.Input[IN_HDR_MIDLINE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_DRAW_MIDLINE].Name = "Draw Midline For Each Projection";
@@ -806,13 +806,11 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_MIDLINE_STYLE].Name = "Midline Style";
         sc.Input[IN_MIDLINE_STYLE].SetCustomInputStrings("None;Solid;Dash;Dot");
         sc.Input[IN_MIDLINE_STYLE].SetCustomInputIndex(1);
-        sc.Input[IN_MIDLINE_STYLE].SetIntLimits(0, 3);
         sc.Input[IN_MIDLINE_STYLE].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_MIDLINE_COLOR_MODE].Name = "Midline Color";
-        sc.Input[IN_MIDLINE_COLOR_MODE].SetCustomInputStrings("Fill;Custom");
+        sc.Input[IN_MIDLINE_COLOR_MODE].Name = "Midline Color Mode";
+        sc.Input[IN_MIDLINE_COLOR_MODE].SetCustomInputStrings("Same as Fill;Custom");
         sc.Input[IN_MIDLINE_COLOR_MODE].SetCustomInputIndex(0);
-        sc.Input[IN_MIDLINE_COLOR_MODE].SetIntLimits(0, 1);
         sc.Input[IN_MIDLINE_COLOR_MODE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_CUSTOM_MIDLINE_COLOR].Name = "Custom Midline Color";
@@ -825,58 +823,40 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
 
         sc.Input[IN_MIDLINE_WIDTH].Name = "Midline Line Width";
         sc.Input[IN_MIDLINE_WIDTH].SetInt(1);
-        sc.Input[IN_MIDLINE_WIDTH].SetIntLimits(1, 6);
         sc.Input[IN_MIDLINE_WIDTH].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_HDR_PERF].Name = "===== REDRAW & PERFORMANCE =====";
+        // Pillar 5: ENGINE & ALERTS (System Backend)
+        sc.Input[IN_HDR_PERF].Name = "===== 5. ENGINE & ALERTS =====";
         sc.Input[IN_HDR_PERF].SetInt(0);
         sc.Input[IN_HDR_PERF].SetIntLimits(0, 0);
         sc.Input[IN_HDR_PERF].DisplayOrder = dispOrder++;
+
+        sc.Input[IN_PROCESS_VISIBLE_ONLY].Name = "Process Only Visible Anchors (Performance)";
+        sc.Input[IN_PROCESS_VISIBLE_ONLY].SetYesNo(1);
+        sc.Input[IN_PROCESS_VISIBLE_ONLY].DisplayOrder = dispOrder++;
 
         sc.Input[IN_AUTO_REDRAW].Name = "Auto Redraw Enabled";
         sc.Input[IN_AUTO_REDRAW].SetYesNo(1);
         sc.Input[IN_AUTO_REDRAW].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_FORCE_REDRAW_NOW].Name = "Force Redraw Now (Manual Trigger)";
-        sc.Input[IN_FORCE_REDRAW_NOW].SetYesNo(0);
-        sc.Input[IN_FORCE_REDRAW_NOW].DisplayOrder = dispOrder++;
-
         sc.Input[IN_CLEAR_OLD_PROJECTIONS].Name = "Clear Old Projections Each Update";
         sc.Input[IN_CLEAR_OLD_PROJECTIONS].SetYesNo(1);
         sc.Input[IN_CLEAR_OLD_PROJECTIONS].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_HDR_SCOPE].Name = "===== SCOPE & QUALITY =====";
-        sc.Input[IN_HDR_SCOPE].SetInt(0);
-        sc.Input[IN_HDR_SCOPE].SetIntLimits(0, 0);
-        sc.Input[IN_HDR_SCOPE].DisplayOrder = dispOrder++;
+        sc.Input[IN_FORCE_REDRAW_NOW].Name = "Force Redraw Now (Manual Trigger)";
+        sc.Input[IN_FORCE_REDRAW_NOW].SetYesNo(0);
+        sc.Input[IN_FORCE_REDRAW_NOW].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_PROCESS_VISIBLE_ONLY].Name = "Process Only Anchors Overlapping Visible Bars (Performance)";
-        sc.Input[IN_PROCESS_VISIBLE_ONLY].SetYesNo(1);
-        sc.Input[IN_PROCESS_VISIBLE_ONLY].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_TIER1_COUNT].Name = "Tier 1 (Focus) Anchors: Latest N";
-        sc.Input[IN_TIER1_COUNT].SetInt(1);
-        sc.Input[IN_TIER1_COUNT].SetIntLimits(1, 100);
-        sc.Input[IN_TIER1_COUNT].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_TIER2_COUNT].Name = "Tier 2 (Context) Anchors: Next M";
-        sc.Input[IN_TIER2_COUNT].SetInt(3);
-        sc.Input[IN_TIER2_COUNT].SetIntLimits(0, 100);
-        sc.Input[IN_TIER2_COUNT].DisplayOrder = dispOrder++;
-
-        sc.Input[IN_REFRESH_BUTTON_ID].Name = "Refresh Button ID (Force Recalc - e.g., after hiding drawings)";
+        sc.Input[IN_REFRESH_BUTTON_ID].Name = "Refresh Button ID (Force Recalc)";
         sc.Input[IN_REFRESH_BUTTON_ID].SetInt(0);
         sc.Input[IN_REFRESH_BUTTON_ID].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_HDR_ALERTS].Name = "===== ALERTS & GAP DETECTION =====";
-        sc.Input[IN_HDR_ALERTS].SetInt(0);
-        sc.Input[IN_HDR_ALERTS].SetIntLimits(0, 0);
+        sc.Input[IN_HDR_ALERTS].Name = "--- Alerts ---";
         sc.Input[IN_HDR_ALERTS].DisplayOrder = dispOrder++;
 
         sc.Input[IN_ALERT_PRICE_SOURCE].Name = "Alert Price Source";
         sc.Input[IN_ALERT_PRICE_SOURCE].SetCustomInputStrings("Last Trade;Bar Close");
         sc.Input[IN_ALERT_PRICE_SOURCE].SetCustomInputIndex(0);
-        sc.Input[IN_ALERT_PRICE_SOURCE].SetIntLimits(0, 1);
         sc.Input[IN_ALERT_PRICE_SOURCE].DisplayOrder = dispOrder++;
 
         sc.Input[IN_ALERT_USE_GAP_DETECTION].Name = "Alert: Use Gap Detection (Tick-by-Tick)";
