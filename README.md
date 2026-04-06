@@ -14,10 +14,10 @@ The following modules represent the primary operational tools in this suite. Eac
 * **Risk/Safety:** Ensures overnight session volume is accurately handled without skewing regular trading hours (RTH) calculations.
 * **Key Features:** High-precision standard deviation bands, gap handling for zero-volume bars, and tick-level accuracy using double-precision accumulators.
 
-### 2. [Balance Zone Engine](BalanceZone_AutoExtend_Guide.md)
+### 2. [Balance Zone Engine](BalanceZone_TieredLifecycle_Plan.md)
 **Utility:** Projects dynamic balance and premium/discount zones derived from user-drawn anchor rectangles directly on the chart.
-* **Operational Edge:** Highly optimized constant-time (O(1)) boundary checking eliminates UI lag during fast markets.
-* **Key Features:** On-the-fly configuration via text labels (e.g., `BZ +6x,-2x`), multi-tier formatting, and targeted redraws.
+* **Operational Edge:** Tiered lifecycle management automatically ghost-archives older zones to reduce chart clutter while maintaining historical context.
+* **Key Features:** **Tiered Lifecycle (Focus/Context/Archive)**, Multi-Anchor Labeling, On-the-fly configuration via text labels (e.g., `BZ +6x,-2x`), and O(1) alert boundary detection.
 
 ### 3. [Level Aggregator](LevelAggregator_README.md)
 **Utility:** Consolidates essential structural levels scattered across multiple charts and timeframes into a single on-chart HUD.

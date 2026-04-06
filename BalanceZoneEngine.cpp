@@ -1,18 +1,21 @@
 // ============================================================================
 // Balance Zone Engine (Sierra Chart ACSIL)
-// Version: 1.0.3
-// Build:   2026-02-09
+// Version: 1.0.4
+// Build:   2026-04-06
 // Author:  Ian @hayian0078
 // Docs:    https://tinyurl.com/BalanceZoneEngine
 //
 // Summary:
 //  - Projects balance zones above/below user anchor rectangles.
+//  - Tiered Lifecycle system (Focus, Context, Archive) reduces chart clutter.
+//  - Multi-anchor label support (Tier 1 & 2) with smooth scrolling.
 //  - Supports per-anchor overrides via rectangle text:
 //
 //      BZ
 //      BZ +2,-4
 //      BZ +6x
 //      BZ  +6x,-2x
+//      BZ T1, BZ T2, BZ T3 (Tier overrides)
 //
 //    Where:
 //      - "+N" / "-N"    => set max multipliers directly (1..30)
@@ -55,65 +58,12 @@
 #include <utility>
 #include <cstring> // strncmp
 
-static constexpr int  BZE_BUILD = 2026020901; // YYYYMMDDNN
+static constexpr int  BZE_BUILD = 2026040601; // YYYYMMDDNN
 
 // Uncomment to enable debug logging (has minor perf overhead)
 // #define BZE_DEBUG_LOGGING
-static constexpr char BZE_BUILD_STR[] = "2026-02-09";
-
-
-// -----------------------------
-// Graph value formatting compatibility
-// - Prefer sc.FormatGraphValue() in whatever signature is available
-// - Returns empty string if not supported
-// -----------------------------
-struct BZE_FmtPriority0 {};
-struct BZE_FmtPriority1 : BZE_FmtPriority0 {};
-struct BZE_FmtPriority2 : BZE_FmtPriority1 {};
-struct BZE_FmtPriority3 : BZE_FmtPriority2 {};
-
-// Try: FormatGraphValue(double, SCString&)
-template <typename SC>
-static auto BZE_FormatGraphValue_Impl(SC& sc, double Value, BZE_FmtPriority3)
-    -> decltype(sc.FormatGraphValue(Value, std::declval<SCString&>()), SCString())
-{
-    SCString Out;
-    sc.FormatGraphValue(Value, Out);
-    return Out;
-}
-
-// Try: FormatGraphValue(SCString&, double)
-template <typename SC>
-static auto BZE_FormatGraphValue_Impl(SC& sc, double Value, BZE_FmtPriority2)
-    -> decltype(sc.FormatGraphValue(std::declval<SCString&>(), Value), SCString())
-{
-    SCString Out;
-    sc.FormatGraphValue(Out, Value);
-    return Out;
-}
-
-// Try: FormatGraphValue(double) -> SCString
-template <typename SC>
-static auto BZE_FormatGraphValue_Impl(SC& sc, double Value, BZE_FmtPriority1)
-    -> decltype(sc.FormatGraphValue(Value), SCString())
-{
-    return sc.FormatGraphValue(Value);
-}
-
-// Fallback: unsupported
-template <typename SC>
-static SCString BZE_FormatGraphValue_Impl(SC&, double, BZE_FmtPriority0)
-{
-    SCString Out;
-    return Out;
-}
-
-template <typename SC>
-static SCString BZE_FormatGraphValueCompat(SC& sc, double Value)
-{
-    return BZE_FormatGraphValue_Impl(sc, Value, BZE_FmtPriority3{});
-}
-static constexpr char BZE_VERSION[] = "1.0.3";
+static constexpr char BZE_BUILD_STR[] = "2026-04-06";
+static constexpr char BZE_VERSION[] = "1.0.4";
 
 SCDLLName("Balance Zone Engine")
 
@@ -139,12 +89,11 @@ enum InputIx
     IN_MAX_DOWN_GROUPS,   // 0..4 => 0/2/6/14/30
 
     IN_HDR_FMT,           // "Balance Zone Formatting"
-    IN_BASIC_DRAW_BORDER,
     IN_BORDER_COLOR_MODE, // 0=same as fill, 1=custom
     IN_CUSTOM_BORDER_COLOR,
 
     // Zone-name labels (zone bands; latest anchor only)
-    IN_ZONE_NAME_LABEL_MODE,   // 0=Off,1=Nice Only,2=All
+    IN_ZONE_NAME_LABEL_MODE,   // 0=Off,1=Tier 1,2=Tier 1 & 2
     IN_ZONE_LABEL_FONT_SIZE,
     IN_ZONE_LABEL_FONT_COLOR,
     IN_ZONE_LABEL_LEFT_OFFSET, // bars to the right
@@ -187,8 +136,8 @@ enum InputIx
 
     IN_HDR_SCOPE,
     IN_PROCESS_VISIBLE_ONLY,
-    IN_NICE_ANCHORS_MODE,
-    IN_NICE_ANCHORS_COUNT,
+    IN_TIER1_COUNT,
+    IN_TIER2_COUNT,
     IN_AUTO_EXTEND_MODE,
     IN_AUTO_EXTEND_BUTTON_ID,
     IN_REFRESH_BUTTON_ID,
@@ -283,6 +232,7 @@ static inline int GroupFromMultiplier(int m) // 0..3
 }
 
 enum class ZoneSide { Up, Down };
+enum class ZoneTier { Focus, Context, Archive };
 
 // ----------------------------------------------------------------------------
 // Anchor text parsing
@@ -296,8 +246,9 @@ struct AnchorTextOverrides
     bool DownIsX = false;
     int  Up = 0;
     int  Down = 0;
-    bool ForceDetailed = false;  // If true, anchor always gets "nice" (detailed) rendering
-    bool Locked = false;         // Stage 2: LOCK keyword
+    
+    bool HasTierOverride = false;
+    ZoneTier ExplicitTier = ZoneTier::Focus;
 };
 
 static inline AnchorTextOverrides ParseAnchorTextOverrides(const SCString& toolText)
@@ -320,10 +271,11 @@ static inline AnchorTextOverrides ParseAnchorTextOverrides(const SCString& toolT
     out.BaseLabel = (start < s.size()) ? s.substr(start, i - start) : std::string();
     out.BaseLabel = TrimCopy(out.BaseLabel);
 
-    // Check for trailing '*' which forces detailed ("nice") rendering
+    // Check for trailing '*' which forces Tier 1 (Focus)
     if (!out.BaseLabel.empty() && out.BaseLabel.back() == '*')
     {
-        out.ForceDetailed = true;
+        out.HasTierOverride = true;
+        out.ExplicitTier = ZoneTier::Focus;
         out.BaseLabel.pop_back();
         out.BaseLabel = TrimCopy(out.BaseLabel);
     }
@@ -364,10 +316,23 @@ static inline AnchorTextOverrides ParseAnchorTextOverrides(const SCString& toolT
         std::string t = ToUpperCopy(TrimCopy(term));
         if (t.empty()) return;
 
-        // Stage 2: LOCK keyword
-        if (t == "LOCK" || t == "FIXED")
+        // Tier Overrides
+        if (t == "T1" || t == "FOCUS")
         {
-            out.Locked = true;
+            out.HasTierOverride = true;
+            out.ExplicitTier = ZoneTier::Focus;
+            return;
+        }
+        if (t == "T2" || t == "CONTEXT")
+        {
+            out.HasTierOverride = true;
+            out.ExplicitTier = ZoneTier::Context;
+            return;
+        }
+        if (t == "T3" || t == "ARCHIVE" || t == "LOCK" || t == "FIXED")
+        {
+            out.HasTierOverride = true;
+            out.ExplicitTier = ZoneTier::Archive;
             return;
         }
 
@@ -512,12 +477,6 @@ static inline COLORREF ResolveMidlineColor(const SCStudyInterfaceRef& sc, COLORR
     return (sc.Input[IN_MIDLINE_COLOR_MODE].GetInt() == 1)
         ? sc.Input[IN_CUSTOM_MIDLINE_COLOR].GetColor()
         : fill;
-}
-
-static inline bool WantBorderForAnchor(const SCStudyInterfaceRef& sc, bool isNiceMode)
-{
-    if (isNiceMode) return true;
-    return sc.Input[IN_BASIC_DRAW_BORDER].GetYesNo() != 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -709,10 +668,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_HDR_FMT].SetIntLimits(0, 0);
         sc.Input[IN_HDR_FMT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_BASIC_DRAW_BORDER].Name = "Basic Mode: Draw Border (Y/N)";
-        sc.Input[IN_BASIC_DRAW_BORDER].SetYesNo(0);
-        sc.Input[IN_BASIC_DRAW_BORDER].DisplayOrder = dispOrder++;
-
         sc.Input[IN_BORDER_COLOR_MODE].Name = "Border Color";
         sc.Input[IN_BORDER_COLOR_MODE].SetCustomInputStrings("Fill;Custom");
         sc.Input[IN_BORDER_COLOR_MODE].SetCustomInputIndex(1);
@@ -725,7 +680,7 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
 
         // ---- Zone Name Labels (zone bands; latest anchor only) ----
         sc.Input[IN_ZONE_NAME_LABEL_MODE].Name = "Zone Name Labels";
-        sc.Input[IN_ZONE_NAME_LABEL_MODE].SetCustomInputStrings("Off;Nice Anchors Only;All Anchors");
+        sc.Input[IN_ZONE_NAME_LABEL_MODE].SetCustomInputStrings("Off;Tier 1 (Focus);Tier 1 & 2 (Focus/Context)");
         sc.Input[IN_ZONE_NAME_LABEL_MODE].SetCustomInputIndex(1);
         sc.Input[IN_ZONE_NAME_LABEL_MODE].SetIntLimits(0, 2);
         sc.Input[IN_ZONE_NAME_LABEL_MODE].DisplayOrder = dispOrder++;
@@ -899,16 +854,15 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         sc.Input[IN_PROCESS_VISIBLE_ONLY].SetYesNo(1);
         sc.Input[IN_PROCESS_VISIBLE_ONLY].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_NICE_ANCHORS_MODE].Name = "Nice Anchors Mode";
-        sc.Input[IN_NICE_ANCHORS_MODE].SetCustomInputStrings("Latest N (by Right Edge);All Anchors");
-        sc.Input[IN_NICE_ANCHORS_MODE].SetCustomInputIndex(0);
-        sc.Input[IN_NICE_ANCHORS_MODE].SetIntLimits(0, 1);
-        sc.Input[IN_NICE_ANCHORS_MODE].DisplayOrder = dispOrder++;
+        sc.Input[IN_TIER1_COUNT].Name = "Tier 1 (Focus) Anchors: Latest N";
+        sc.Input[IN_TIER1_COUNT].SetInt(1);
+        sc.Input[IN_TIER1_COUNT].SetIntLimits(1, 100);
+        sc.Input[IN_TIER1_COUNT].DisplayOrder = dispOrder++;
 
-        sc.Input[IN_NICE_ANCHORS_COUNT].Name = "Nice Anchors: Latest N";
-        sc.Input[IN_NICE_ANCHORS_COUNT].SetInt(1);
-        sc.Input[IN_NICE_ANCHORS_COUNT].SetIntLimits(1, 5000);
-        sc.Input[IN_NICE_ANCHORS_COUNT].DisplayOrder = dispOrder++;
+        sc.Input[IN_TIER2_COUNT].Name = "Tier 2 (Context) Anchors: Next M";
+        sc.Input[IN_TIER2_COUNT].SetInt(3);
+        sc.Input[IN_TIER2_COUNT].SetIntLimits(0, 100);
+        sc.Input[IN_TIER2_COUNT].DisplayOrder = dispOrder++;
 
         sc.Input[IN_REFRESH_BUTTON_ID].Name = "Refresh Button ID (Force Recalc - e.g., after hiding drawings)";
         sc.Input[IN_REFRESH_BUTTON_ID].SetInt(0);
@@ -1073,8 +1027,8 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
     // Labels
     const int labelBarOff = sc.Input[IN_LABEL_BAR_OFFSET].GetInt();
 
-    // Zone-name labels (latest anchor only)
-    const int zoneNameLabelMode = sc.Input[IN_ZONE_NAME_LABEL_MODE].GetInt(); // 0=Off,1=Nice Only,2=All
+    // Zone-name labels (zone bands; latest anchor only)
+    const int zoneNameLabelMode = sc.Input[IN_ZONE_NAME_LABEL_MODE].GetInt(); // 0=Off,1=Tier 1,2=Tier 1 & 2
     const int zoneLabelBarOff   = sc.Input[IN_ZONE_LABEL_LEFT_OFFSET].GetInt();
     const int zoneLabelFontSize = ClampInt(sc.Input[IN_ZONE_LABEL_FONT_SIZE].GetInt(), 6, 36);
     const COLORREF zoneLabelFontColor = sc.Input[IN_ZONE_LABEL_FONT_COLOR].GetColor();
@@ -1105,16 +1059,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
 
     // scope/quality
     const bool processVisibleOnlySetting = (sc.Input[IN_PROCESS_VISIBLE_ONLY].GetYesNo() != 0);
-        const int niceMode = sc.Input[IN_NICE_ANCHORS_MODE].GetInt();
-    int niceN = sc.Input[IN_NICE_ANCHORS_COUNT].GetInt();
-    if (niceMode == 1)
-        niceN = 0; // All Anchors
-    else
-        niceN = ClampInt(niceN, 1, 5000);
-
-
-
-
 
     // Resolve midline style enum
     SubgraphLineStyles midLineStyleEnum = LINESTYLE_DASH;
@@ -1515,7 +1459,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
     const int curAnchorCount = (int)currentFoundAnchorLines.size();
 
-    const int curBasicBorder = sc.Input[IN_BASIC_DRAW_BORDER].GetYesNo() ? 1 : 0;
     const int curBorderMode  = sc.Input[IN_BORDER_COLOR_MODE].GetInt();
     const int curMidMode     = sc.Input[IN_MIDLINE_COLOR_MODE].GetInt();
 
@@ -1542,6 +1485,9 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     const int dnT714  = ClampInt(sc.Input[IN_DN_TRANS_714].GetInt(), 0, 100);
     const int dnT1530 = ClampInt(sc.Input[IN_DN_TRANS_1530].GetInt(), 0, 100);
 
+    const int tier1N = sc.Input[IN_TIER1_COUNT].GetInt();
+    const int tier2N = sc.Input[IN_TIER2_COUNT].GetInt();
+
     const bool inputsChanged =
         (P_LastMaxUpGroups != maxUpGroups) ||
         (P_LastMaxDnGroups != maxDownGroups) ||
@@ -1551,7 +1497,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         (P_LastMidWidth    != midlineWidth) ||
         (P_LastMidColorMode!= curMidMode) ||
         (P_LastBorderMode  != curBorderMode) ||
-        (P_LastBasicBorder != curBasicBorder) ||
         (P_LastCustomBorderColor != curCustomBorder) ||
         (P_LastCustomMidColor    != curCustomMid) ||
         (P_LastLblDec      != userDecimals) ||
@@ -1561,7 +1506,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         (P_LastZoneLblHashUp   != zoneLblHashUp) ||
         (P_LastZoneLblHashDn   != zoneLblHashDn) ||
         (P_LastProcVisible != (processVisibleOnlySetting ? 1 : 0)) ||
-        (P_LastNiceN       != niceN) ||
+        (P_LastNiceN       != tier1N) ||   // Repurposed NiceN for Tier 1
+        (sc.GetPersistentInt(86) != tier2N) || // Use persistent 86 for Tier 2
         (P_LastUpFill12    != upFill12) ||
         (P_LastUpFill36    != upFill36) ||
         (P_LastUpFill714   != upFill714) ||
@@ -1589,7 +1535,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     P_LastMidWidth    = midlineWidth;
     P_LastMidColorMode = curMidMode;
     P_LastBorderMode  = curBorderMode;
-    P_LastBasicBorder = curBasicBorder;
     P_LastCustomBorderColor = curCustomBorder;
     P_LastCustomMidColor    = curCustomMid;
     P_LastLblDec      = userDecimals;
@@ -1599,7 +1544,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     P_LastZoneLblHashUp   = zoneLblHashUp;
     P_LastZoneLblHashDn   = zoneLblHashDn;
     P_LastProcVisible = processVisibleOnlySetting ? 1 : 0;
-    P_LastNiceN       = niceN;
+    P_LastNiceN       = tier1N;
+    sc.SetPersistentInt(86, tier2N);
     P_LastUpFill12    = upFill12;
     P_LastUpFill36    = upFill36;
     P_LastUpFill714   = upFill714;
@@ -1648,23 +1594,18 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             if (forceRedrawNow || inputsChanged || anchorsChanged || anchorGeometryChanged)
                 shouldRedraw = true;
             
+            // Fix: If we are scrolling, we MUST redraw labels to move them to the new visibleLeft.
+            if (!shouldRedraw && visibleChanged && zoneNameLabelMode != 0)
+                shouldRedraw = true;
+
             // Fix: If we are scrolling and using Process Visible Only, we MUST redraw.
-            // Zone Name Labels are now anchored to the projection's right edge, so they no longer
-            // depend on visibleChanged.
-            if (!shouldRedraw && visibleChanged)
-            {
-                if (processVisibleOnlySetting)
-                {
-                    shouldRedraw = true;
-                }
-            }
+            if (!shouldRedraw && visibleChanged && processVisibleOnlySetting)
+                shouldRedraw = true;
             
             // Fix for auto-extend: If ArraySize changed (new bars arrived) and auto-extend is enabled,
             // we must redraw to extend the zones to the new bars
             if (!shouldRedraw && arraySizeChanged && autoExtendLatest)
-            {
                 shouldRedraw = true;
-            }
         }
         else
         {
@@ -1822,7 +1763,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return idx;
     };
 
-    // --------- Determine nice anchors globally (by rightIndex, tie by beginIndex) ----------
+    // --------- Determine tiers globally (by rightIndex, tie by beginIndex) ----------
     struct AnchorMeta
     {
         int line = 0;
@@ -1830,6 +1771,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         int right = 0;
         int beginIdx = 0;
         int region = 0;
+        const AnchorData* data = nullptr;
     };
 
     std::vector<AnchorMeta> metas;
@@ -1845,6 +1787,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         m.right = rightIndex;
         m.beginIdx = a.BeginIndex;
         m.region = a.Region;
+        m.data = &a;
         metas.push_back(m);
     }
 
@@ -1855,30 +1798,45 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return A.line > B.line;
     });
 
-    std::unordered_set<int> niceLines;
-    if (niceN > 0 && !metas.empty())
-    {
-        int ranksTaken = 0;
-        int lastRight = 0;
-        int lastBegin = 0;
-        bool haveLast = false;
+    std::unordered_map<int, ZoneTier> tierMap;
+    const int t1Max = sc.Input[IN_TIER1_COUNT].GetInt();
+    const int t2Max = sc.Input[IN_TIER2_COUNT].GetInt();
 
+    if (!metas.empty())
+    {
+        int focusTaken = 0;
+        int contextTaken = 0;
+
+        // Pass 1: Handle explicit overrides
         for (const auto& m : metas)
         {
-            const bool isNewRank = (!haveLast) || (m.right != lastRight) || (m.beginIdx != lastBegin);
-
-            if (isNewRank)
+            const AnchorTextOverrides ov = ParseAnchorTextOverrides(m.data->Text);
+            if (ov.HasTierOverride)
             {
-                if (ranksTaken >= niceN)
-                    break;
-
-                ranksTaken++;
-                lastRight = m.right;
-                lastBegin = m.beginIdx;
-                haveLast = true;
+                tierMap[m.line] = ov.ExplicitTier;
             }
+        }
 
-            niceLines.insert(m.line);
+        // Pass 2: Handle chronological assignments for remaining anchors
+        for (const auto& m : metas)
+        {
+            if (tierMap.find(m.line) != tierMap.end())
+                continue;
+
+            if (focusTaken < t1Max)
+            {
+                tierMap[m.line] = ZoneTier::Focus;
+                focusTaken++;
+            }
+            else if (contextTaken < t2Max)
+            {
+                tierMap[m.line] = ZoneTier::Context;
+                contextTaken++;
+            }
+            else
+            {
+                tierMap[m.line] = ZoneTier::Archive;
+            }
         }
     }
 
@@ -1958,11 +1916,14 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return MapXToMaxMultiplier(v);
     };
 
-    const bool allNice = (niceN == 0);
-
     // Accept pre-parsed overrides to avoid 3x parsing per anchor
-    auto ProjectFromAnchor = [&](const AnchorData& src, bool isNice, bool isLatest, const AnchorTextOverrides& ov)
+    auto ProjectFromAnchor = [&](const AnchorData& src, ZoneTier tier, bool isLatest, const AnchorTextOverrides& ov)
     {
+        // Tier properties
+        const bool isFocus   = (tier == ZoneTier::Focus);
+        const bool isContext = (tier == ZoneTier::Context);
+        const bool isArchive = (tier == ZoneTier::Archive);
+
         // Defensive validation: Sierra Chart can sometimes return stale/corrupted indices
         // for user drawings, especially after chart changes or when drawings extend beyond
         // loaded bars. Clamp to valid bounds to prevent unexpected behavior.
@@ -2071,9 +2032,9 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         const double h = snappedTop - snappedBot;
         if (h <= 0.0) return;
 
-        const bool midlineEnabledLocal   = isNice && midlineEnabledStudySetting;
-        const bool showMidlinePriceLocal = isNice && showMidlinePrice;
-        const bool showRectPricesLocal   = isNice && showRectPrices;
+        const bool midlineEnabledLocal   = isFocus && midlineEnabledStudySetting;
+        const bool showMidlinePriceLocal = isFocus && showMidlinePrice;
+        const bool showRectPricesLocal   = isFocus && showRectPrices;
 
         auto DrawOne = [&](ZoneSide side, int m, double projTop, double projBot)
         {
@@ -2096,7 +2057,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                     const int group = 0;
                     fill = GetZoneFillColor(sc, side, group);
                     transparency = GetZoneTransparency(sc, side, group);
-                    const bool wantBorder = WantBorderForAnchor(sc, isNice);
+                    const bool wantBorder = (tier == ZoneTier::Focus || tier == ZoneTier::Archive);
                     border = wantBorder ? ResolveBorderColor(sc, fill) : fill;
                 }
             }
@@ -2106,15 +2067,15 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 const int group = GroupFromMultiplier(m);
                 fill = GetZoneFillColor(sc, side, group);
                 transparency = GetZoneTransparency(sc, side, group);
-                const bool wantBorder = WantBorderForAnchor(sc, isNice);
+                const bool wantBorder = (tier == ZoneTier::Focus || tier == ZoneTier::Archive);
                 border = wantBorder ? ResolveBorderColor(sc, fill) : fill;
             }
 
-            // Stage 2: LOCK keyword visual boost (Relative boost)
-            if (ov.Locked)
+            // Stage 2: ARCHIVE tier visual boost (Relative boost)
+            if (isArchive)
             {
-                // Add 50% of the remaining transparency range to avoid full invisibility
-                transparency = transparency + (int)((100 - transparency) * 0.50);
+                // Add 60% of the remaining transparency range to avoid full invisibility
+                transparency = transparency + (int)((100 - transparency) * 0.60);
                 transparency = ClampInt(transparency, 0, 100);
             }
 
@@ -2138,7 +2099,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             tFill.BeginValue        = projBot;
             tFill.EndValue          = projTop;
             tFill.LineWidth         = 1;
-            tFill.LineStyle         = ov.Locked ? LINESTYLE_DOT : LINESTYLE_SOLID;
+            tFill.LineStyle         = isArchive ? LINESTYLE_DOT : LINESTYLE_SOLID;
 
             // RECTANGLEHIGHLIGHT: Color = outline, SecondaryColor = fill
             tFill.Color             = border;
@@ -2212,7 +2173,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 DeleteLn(lnMidTx);
             }
 
-            // Rectangle price labels (nice only)
+            // Rectangle price labels (Focus/Context only)
             // Skip for m=0 since the user's anchor already has labels
             int lnTop = isUp ? Ln(base, UP_TOPTEXT_OFFSET, m) : Ln(base, DN_TOPTEXT_OFFSET, m);
             int lnBot = isUp ? Ln(base, UP_BOTTEXT_OFFSET, m) : Ln(base, DN_BOTTEXT_OFFSET, m);
@@ -2403,21 +2364,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         }
     };
 
-    for (const AnchorData* pA : anchorsToProcess)
-    {
-        // NOTE: Per-anchor skip optimization (#8) was DISABLED due to causing inconsistent redraws.
-        // The zone-level hashing inside DrawOne still provides optimization by skipping unchanged UseTool calls.
-        // This ensures every anchor is always processed when a redraw is triggered.
-        
-        // Parse once per anchor (was previously parsed 3x: here, in ProjectFromAnchor, and in DrawZoneNameLabels)
-        const AnchorTextOverrides ov = ParseAnchorTextOverrides(pA->Text);
-        const bool isNice = allNice || ov.ForceDetailed || (niceLines.find(pA->LineNumber) != niceLines.end());
-        const bool isLatest = (pA->LineNumber == latestAnchorPtr->LineNumber);
-        ProjectFromAnchor(*pA, isNice, isLatest, ov);  // Pass pre-parsed overrides
-    }
-
     // --------------------
-    // Zone-name labels (latest anchor only)
+    // Zone-name labels (shared lambda)
     // --------------------
     auto ReplaceAll = [&](std::string s, const std::string& from, const std::string& to) -> std::string
     {
@@ -2441,27 +2389,25 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return out;
     };
 
-    auto DrawZoneNameLabelsForAnchor = [&](const AnchorData& src, bool isNice, const AnchorTextOverrides& ov) -> void
+    auto DrawZoneNameLabelsForAnchor = [&](const AnchorData& src, ZoneTier tier, const AnchorTextOverrides& ov) -> void
     {
-        // Mode gate
-        if (zoneNameLabelMode == 0)
-            return;
-        if (zoneNameLabelMode == 1 && !isNice)
-            return;
-
         const int anchorLine = src.LineNumber;
         const int base       = MakeBase(anchorLine);
 
-        // Optimized O(1) cleanup: Only delete labels for the previous owner, not all anchors
-        // This uses persistent int to track who owned zone labels last frame
-        int& P_PrevZoneLabelOwner = sc.GetPersistentInt(99);
-        if (P_PrevZoneLabelOwner != 0 && P_PrevZoneLabelOwner != anchorLine)
+        // Mode check
+        bool eligible = false;
+        if (zoneNameLabelMode == 1 && tier == ZoneTier::Focus)
+            eligible = true;
+        else if (zoneNameLabelMode == 2 && (tier == ZoneTier::Focus || tier == ZoneTier::Context))
+            eligible = true;
+
+        if (!eligible)
         {
-            const int prevBase = MakeBase(P_PrevZoneLabelOwner);
+            // Delete labels for anchors that don't qualify for the current mode
             for (int k = 1; k <= 9; ++k)
-                DeleteLn(Ln(prevBase, ZN_TEXT_OFFSET, k));
+                DeleteLn(Ln(base, ZN_TEXT_OFFSET, k));
+            return;
         }
-        P_PrevZoneLabelOwner = anchorLine;
 
         // Use pre-parsed overrides (passed in from caller)
         int localMaxUp   = ApplyOverrideToMax(ov.HasUp,   ov.UpIsX,   ov.Up,   maxUp);
@@ -2520,8 +2466,9 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
         auto DrawText = [&](int code, bool up, int X, const SCString& text) -> void
         {
-            // Stage 2: LOCK keyword color shift
-            const COLORREF labelColor = ov.Locked ? RGB(160, 160, 160) : zoneLabelFontColor;
+            // Archive tier color shift
+            const bool isArchive = (tier == ZoneTier::Archive);
+            const COLORREF labelColor = isArchive ? RGB(160, 160, 160) : zoneLabelFontColor;
 
             // Place label at the midpoint of a representative *rectangle* within the *zone band*.
             // Band definitions (by rectangle indices above/below the anchor):
@@ -2586,8 +2533,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             t.Region      = src.Region;
             t.BeginIndex  = xIndex;
             t.BeginValue  = mid;
-            // Stage 3: Color shift for locked labels
-            t.Color       = ov.Locked ? RGB(160, 160, 160) : labelColor;
+            // ARCHIVE Tier Color Shift
+            t.Color       = isArchive ? RGB(160, 160, 160) : labelColor;
             t.FontSize    = zoneLabelFontSize;
             t.LineNumber  = Ln(base, ZN_TEXT_OFFSET, code);
             t.AddMethod   = UTAM_ADD_OR_ADJUST;
@@ -2599,7 +2546,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         // Cost Basis
         {
             SCString txt = zoneLabelCostBasis;
-            if (ov.Locked)
+            if (tier == ZoneTier::Archive)
             {
                 SCString lockPrefix = "(!) LOCK ";
                 lockPrefix += zoneLabelCostBasis;
@@ -2662,28 +2609,24 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         }
     };
 
-    // Owner = latest anchor by right edge (same as alerts)
+    for (const AnchorData* pA : anchorsToProcess)
     {
-        const int ownerLine = latestAnchorPtr ? latestAnchorPtr->LineNumber : 0;
+        // NOTE: Per-anchor skip optimization (#8) was DISABLED due to causing inconsistent redraws.
+        // The zone-level hashing inside DrawOne still provides optimization by skipping unchanged UseTool calls.
+        // This ensures every anchor is always processed when a redraw is triggered.
+        
+        // Find tier for this anchor
+        ZoneTier tier = ZoneTier::Archive;
+        auto it = tierMap.find(pA->LineNumber);
+        if (it != tierMap.end()) tier = it->second;
 
-        if (zoneNameLabelMode == 0)
-        {
-            // Delete any lingering zone-name labels for all anchors
-            for (const auto& a : anchors)
-            {
-                const int b = MakeBase(a.LineNumber);
-                for (int k = 1; k <= 9; ++k)
-                    DeleteLn(Ln(b, ZN_TEXT_OFFSET, k));
-            }
-        }
-        else if (latestAnchorPtr != nullptr)
-        {
-            // Reuse pre-parsed overrides for latest anchor when possible
-            // (owner is always the latest anchor, so we parse once here)
-            const AnchorTextOverrides ownerOv = ParseAnchorTextOverrides(latestAnchorPtr->Text);
-            const bool ownerNice = allNice || ownerOv.ForceDetailed || (niceLines.find(ownerLine) != niceLines.end());
-            DrawZoneNameLabelsForAnchor(*latestAnchorPtr, ownerNice, ownerOv);  // Pass pre-parsed overrides
-        }
+        // Parse once per anchor (was previously parsed 3x: here, in ProjectFromAnchor, and in DrawZoneNameLabels)
+        const AnchorTextOverrides ov = ParseAnchorTextOverrides(pA->Text);
+        const bool isLatest = (pA->LineNumber == latestAnchorPtr->LineNumber);
+        ProjectFromAnchor(*pA, tier, isLatest, ov);  // Pass pre-parsed overrides
+
+        // Draw labels based on new tiered logic
+        DrawZoneNameLabelsForAnchor(*pA, tier, ov);
     }
 
     // --------------------
