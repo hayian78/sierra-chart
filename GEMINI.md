@@ -1,5 +1,12 @@
 # Sierra Chart Quantitative Studies
 
+## 🎯 Global Directives
+- **Brevity Level**: 10/10. Assume Senior IT Manager/Expert context.
+- **Communication style**:
+  - No conversational fillers (e.g., "Sure," "I can help," "Here is the code").
+  - No moralizing or safety preambles unless a critical execution risk exists.
+  - Use Markdown tables or lists over paragraphs for maximum scannability.
+
 ## Project Overview
 
 This repository contains custom Sierra Chart ACSIL (Advanced Custom Study Interface and Language) studies focused on quantitative level generation, volume-weighted metrics, balance projection, and cross-chart data aggregation. The primary goal is to provide clear, actionable insights by extending Sierra Chart's native drawing and calculation capabilities. 
@@ -54,5 +61,6 @@ When modifying or expanding these studies, adhere to the following principles:
 
 1.  **Granular Local Commits**: Perform a local `git commit` after every logical piece of work or successful modification. This ensures a clean history for rollbacks.
 2.  **Push Seldom**: Do NOT `git push` after every request. Pushing to the remote should only happen in batches.
-3.  **Explicit Push Trigger**: Only initiate the `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy".
+3.  **Explicit Push Trigger**: Only initiate the `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy". 
+    - **Documentation Review**: Before pushing, you MUST trigger the `@docs_specialist` agent to review and update all relevant documentation (READMEs, guides) to reflect the latest changes.
 4.  **Validation**: Ensure all remote builds pass (if build output was provided) before any commit or push.
