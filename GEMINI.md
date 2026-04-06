@@ -65,3 +65,4 @@ When modifying or expanding these studies, adhere to the following principles:
 3.  **Explicit Push Trigger**: Only initiate the `git push` workflow when the user explicitly references `@SHIP.md` or issues a direct command to "Ship it" or "Deploy". 
     - **Documentation Review**: Before pushing, you MUST trigger the `@docs_specialist` agent to review and update all relevant documentation (READMEs, guides) to reflect the latest changes.
 4.  **Validation**: Ensure all remote builds pass (if build output was provided) before any commit or push.
+5.  **Local Deployment Script**: NEVER trigger `deploy.sh` or attempt to manually copy files to external directories (like `/mnt/c/SierraChart`) unless explicitly asked by the user to do so. The user handles compilation and file copying manually to manage state.

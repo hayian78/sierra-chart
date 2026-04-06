@@ -1782,6 +1782,44 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     const int t1Max = sc.Input[IN_TIER1_COUNT].GetInt();
     const int t2Max = sc.Input[IN_TIER2_COUNT].GetInt();
 
+    // --- Determine Latest Anchor with Hysteresis Lock ---
+    const AnchorData* latestAnchorPtr = nullptr;
+    int& P_LockTTL = sc.GetPersistentInt(58);
+
+    if (!metas.empty())
+    {
+        latestAnchorPtr = metas[0].data;
+
+        // Hysteresis Lock: Prevent a previously drawn anchor from temporarily taking over 
+        // the "latest" auto-extend slot while the active anchor is being resized.
+        if (P_LastExtendedAnchor > 0 && latestAnchorPtr->LineNumber != P_LastExtendedAnchor)
+        {
+            // Find if the locked anchor still exists on the chart
+            const AnchorData* lockedAnchor = nullptr;
+            for (const auto& a : anchors)
+            {
+                if (a.LineNumber == P_LastExtendedAnchor)
+                {
+                    lockedAnchor = &a;
+                    break;
+                }
+            }
+
+            if (lockedAnchor != nullptr)
+            {
+                // The locked anchor still exists. 
+                // The only reason it's not metas[0] is because its right edge shrunk during a drag,
+                // OR a new anchor was drawn to its right.
+                // We release the lock ONLY if the new right-most anchor was drawn AFTER the locked anchor.
+                if (latestAnchorPtr->LineNumber <= P_LastExtendedAnchor)
+                {
+                    // The right-most anchor is OLDER than the locked anchor. Keep the lock.
+                    latestAnchorPtr = lockedAnchor;
+                }
+            }
+        }
+    }
+
     if (!metas.empty())
     {
         int focusTaken = 0;
@@ -1795,6 +1833,13 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             {
                 tierMap[m.line] = ov.ExplicitTier;
             }
+        }
+
+        // Pass 1.5: Force locked/latest anchor to Tier 1 (Focus) to maintain Auto-Extend viability
+        if (latestAnchorPtr != nullptr && tierMap.find(latestAnchorPtr->LineNumber) == tierMap.end())
+        {
+            tierMap[latestAnchorPtr->LineNumber] = ZoneTier::Focus;
+            focusTaken++;
         }
 
         // Pass 2: Handle chronological assignments for remaining anchors
@@ -1819,26 +1864,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             }
         }
     }
-
-    // Latest anchor for Only Most Recent + Alerts
-    const AnchorData* latestAnchorPtr = nullptr;
-    {
-        if (!metas.empty())
-        {
-            const int latestLine = metas[0].line;
-            for (const auto& a : anchors)
-            {
-                if (a.LineNumber == latestLine)
-                {
-                    latestAnchorPtr = &a;
-                    break;
-                }
-            }
-        }
-        if (latestAnchorPtr == nullptr)
-            latestAnchorPtr = &anchors.back();
-    }
-    
 
     // Determine which anchors we will process
     const bool processVisibleOnly = processVisibleOnlySetting && !onlyMostRecent && !forceRedrawNow;
@@ -1946,8 +1971,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 		int drawLeftIndex  = leftIndex;
 		int drawRightIndex = rightIndex;  // Default: use anchor's right edge
 
-		// Auto-extend: if enabled and this is the latest anchor, extend projections to current bar + 5
-		if (autoExtendLatest && isLatest)
+		// Auto-extend: if enabled, this is the latest anchor, and it is Tier 1 (Focus)
+		if (autoExtendLatest && isLatest && isFocus)
 		{
 			const int extendedRight = latestLoadedIndex + 5;  // 5 bars ahead for breathing room
 			drawRightIndex = std::max(rightIndex, extendedRight);
@@ -2827,9 +2852,24 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     pState->LastProcessedBarIndex = lastIndex;
 
     // Update tracking for the next frame
-    // This allows us to process the "outgoing" extended anchor even if it's off-screen
-    if (autoExtendLatest && latestAnchorPtr != nullptr)
+    // Unconditionally persist to ensure Focus-tier tracking applies globally
+    if (latestAnchorPtr != nullptr)
+    {
         P_LastExtendedAnchor = latestAnchorPtr->LineNumber;
+        P_LockTTL = 30; // 30 frames TTL to survive long drag-hides
+    }
     else
-        P_LastExtendedAnchor = 0;
+    {
+        // Anchor is missing. Decrement TTL instead of immediately releasing the lock.
+        if (P_LastExtendedAnchor > 0)
+        {
+            if (P_LockTTL > 0)
+                P_LockTTL--;
+            
+            if (P_LockTTL <= 0)
+            {
+                P_LastExtendedAnchor = 0;
+            }
+        }
+    }
 }

@@ -38,6 +38,14 @@ Terse Communication: Use "Managerial Bullet Points." I value time and clarity.
 AEST/Market Sync: Always ensure project timelines and execution logic respect the Brisbane/New York time offset.
 Infrastructure Awareness: Remember the user's multi-laptop setup and Rithmic-DTC feed. Local execution is always preferred over high-bandwidth cloud processing for speed.
 
+## Efficiency & Token Constraints
+- **Style:** Terse, executive summary. No pleasantries (e.g., skip "I've reviewed the team's input").
+- **Output Format:** 
+  1. **[Logic Blueprint]** - 3-5 bullet points maximum.
+  2. **[Agent Tasks]** - 1 line per subagent.
+  3. **[Permission Gate]** - Stop and wait for user "OK" before ANY execution.
+- **Constraint:** Do not repeat the trader's or coder's full responses. Only synthesize conflicts or the final path forward.
+
 **Orchestration Guidance:** When a task involves both market strategy and code, 
 I will provide a structured plan for the main agent to first delegate to `trader` to define logic, 
 and then to `coder` to draft the implementation.
