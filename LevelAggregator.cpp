@@ -472,7 +472,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
     if (sc.ArraySize == 0) {
         if (p_State->HasScanned) {
             DrawTable(sc, p_State, false, 0, 0, 0, 0, 0, 0, 0, true);
-            DrawLines(sc, p_State, false, 0, 0, 0, false, 0, 0, 0, true);
+            DrawLines(sc, p_State, false, 0, 0, 0, false, false, 0, 0, 0, true);
             DrawHUD(sc, false, "", 0, 0, 0, 0);
             p_State->HasScanned = false;
         }
