@@ -155,7 +155,7 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
             
             SCString labelText = (level.Description.GetLength() > 0 ? level.Description : level.Label);
             if (showPrice) {
-                labelText.Format("%s [%s] (%s)", labelText.GetChars(), sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars(), level.ChartName.GetChars());
+                labelText.Format("%s (%s) [%s]", labelText.GetChars(), level.ChartName.GetChars(), sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars());
             } else {
                 labelText.Format("%s (%s)", labelText.GetChars(), level.ChartName.GetChars());
             }
@@ -399,7 +399,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         sc.Input[IN_SHORT_LINE_BARS].DisplayOrder = order++;
 
         sc.Input[IN_LABEL_MARGIN].Name = "Label Margin (Bars Beyond Right)";
-        sc.Input[IN_LABEL_MARGIN].SetInt(5);
+        sc.Input[IN_LABEL_MARGIN].SetInt(20);
         sc.Input[IN_LABEL_MARGIN].SetIntLimits(0, 100);
         sc.Input[IN_LABEL_MARGIN].DisplayOrder = order++;
         
