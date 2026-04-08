@@ -153,11 +153,12 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
             Text.ChartNumber = sc.ChartNumber; Text.LineNumber = labelID;
             Text.DrawingType = DRAWING_TEXT;
             
-            SCString labelText = (level.Description.GetLength() > 0 ? level.Description : level.Label);
+            SCString baseLabel = (level.Description.GetLength() > 0 ? level.Description : level.Label);
+            SCString labelText;
             if (showPrice) {
-                labelText.Format("%s (%s) [%s]", labelText.GetChars(), level.ChartName.GetChars(), sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars());
+                labelText.Format("%s (%s) [%s]", baseLabel.GetChars(), level.ChartName.GetChars(), sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars());
             } else {
-                labelText.Format("%s (%s)", labelText.GetChars(), level.ChartName.GetChars());
+                labelText.Format("%s (%s)", baseLabel.GetChars(), level.ChartName.GetChars());
             }
             Text.Text = labelText;
             Text.BeginValue = level.Price; Text.Color = lineColor;

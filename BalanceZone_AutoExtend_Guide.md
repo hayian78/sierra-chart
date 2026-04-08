@@ -15,9 +15,9 @@
 | **Max Up / Down Zone Groups** | Integer | `4` | Limits the number of generated zone groups (0 to 4). |
 
 ## Operational Use
-* **Visual Cues:** Draws detailed balance zones above and below an anchor rectangle based on the anchor's text (e.g., `BZ +2,-4`). Extended zones automatically project to the right edge if auto-extend is enabled.
+* **Visual Cues:** Draws detailed balance zones above and below an anchor rectangle based on the anchor's text (e.g., `BZ +2,-4`). Extended zones automatically project to the right edge if auto-extend is enabled (note: this auto-extend behavior exclusively applies to Tier 1 / Focus anchors).
 * **Hotkeys:** Use the specified **Auto-Extend Button ID** on the Sierra Chart Custom Study Control Bar to quickly toggle the extension of the latest anchor.
-* **Limitations:** Requires Sierra Chart v2813+. Overriding multipliers via text requires exact syntax (e.g., `BZ +6x,-2x`).
+* **Limitations:** Requires Sierra Chart v2813+. Overriding multipliers via text requires exact syntax (e.g., `BZ +6x,-2x`). To prevent a live anchor from auto-extending while you are actively resizing it, append `LOCK` to its text label (e.g., `BZ LOCK`). This manually pushes the anchor to the Archive tier (Tier 3), effectively disabling auto-extension for that specific anchor.
 
 ## Developer Notes (ACSIL)
 * **DLL Name:** `Balance Zone Engine`

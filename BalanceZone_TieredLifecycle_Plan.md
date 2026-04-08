@@ -30,7 +30,7 @@ If you ever want an anchor to defy the automatic timeline (for example, keeping 
 - **`BZ T2`**: Permanently locks the anchor into Tier 2 (Standard).
 - **`BZ T3`**: Permanently locks the anchor into Tier 3 (Muted).
 
-If you just type traditional `BZ`, it enters the automatic chronological pipeline. Legacy keywords like `LOCK` and `*` can be mapped to these tiers beneath the hood to ensure none of your existing saved chartbooks break.
+If you just type traditional `BZ`, it enters the automatic chronological pipeline. Legacy keywords like `LOCK` and `*` can be mapped to these tiers beneath the hood to ensure none of your existing saved chartbooks break. Specifically, appending `LOCK` (e.g., `BZ LOCK`) forces the anchor into Tier 3 (Archive). Because **Auto-Extend now strictly applies only to Tier 1 (Focus) anchors**, using `LOCK` is the recommended method to temporarily prevent a live anchor from auto-extending and taking over the screen while you are actively resizing it.
 
 ## Implementation Final Status (2026-04-06)
 
