@@ -47,3 +47,16 @@ The Tiered Lifecycle system is fully implemented in `BalanceZoneEngine.cpp` (v1.
 - **Performance**: Optimized with O(1) alert path detection and O(N) assignment passes. Visible-only processing remains fully functional.
 - **Backward Compatibility**: Existing study settings for "Nice N" have been repurposed for Tier 1 counts.
 
+### 4. Lifecycle Maintenance: Cleanup & Shrink-Wrap
+As anchors age and move into the Archive (Tier 3), they often project zones into price levels that the market never reached. To optimize visual clarity and performance, the **Balance Zone Manager** tool provides a "Shrink-Wrap" utility.
+
+- **Trigger**: Manual button on the control bar ("Shrink-Wrap BZ").
+- **Action**: 
+    1. Scans all `BZ` anchors on the chart.
+    2. Identifies the actual High/Low reached by price from the anchor's start to the current bar.
+    3. Calculates the exact number of multipliers needed to cover that range.
+    4. Updates the anchor label (e.g., `BZ` -> `BZ +4,-2`) to "shrink-wrap" the projections to realized price action.
+- **Safety**: By default, the manager will **exclude** any anchor that already has explicit multipliers defined in its label (e.g., `BZ +6x,-2x`), assuming these are intentional user overrides.
+- **Goal**: Minimize "ghost" levels in areas where candles do not go, ensuring the Archive remains a clean record of historical structure.
+
+
