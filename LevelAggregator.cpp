@@ -109,7 +109,7 @@ void DrawHUD(SCStudyInterfaceRef sc, bool active, const SCString& prefix, int xP
 }
 
 void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines, 
-               int lineStyle, int lineWidth, COLORREF lineColor, bool showLabels,
+               int lineStyle, int lineWidth, COLORREF lineColor, bool showLabels, bool showPrice,
                int drawingMode, int shortLineBars, int labelMargin, bool forceRedraw) {
     const int baseLineID = 98765500;
     const int maxLevels = 100;
@@ -152,7 +152,14 @@ void DrawLines(SCStudyInterfaceRef sc, GlobalState* p_State, bool showLines,
             s_UseTool Text; Text.Clear();
             Text.ChartNumber = sc.ChartNumber; Text.LineNumber = labelID;
             Text.DrawingType = DRAWING_TEXT;
-            Text.Text.Format("%s (%s)", (level.Description.GetLength() > 0 ? level.Description.GetChars() : level.Label.GetChars()), level.ChartName.GetChars());
+            
+            SCString labelText = (level.Description.GetLength() > 0 ? level.Description : level.Label);
+            if (showPrice) {
+                labelText.Format("%s [%s] (%s)", labelText.GetChars(), sc.FormatGraphValue(level.Price, sc.BaseGraphValueFormat).GetChars(), level.ChartName.GetChars());
+            } else {
+                labelText.Format("%s (%s)", labelText.GetChars(), level.ChartName.GetChars());
+            }
+            Text.Text = labelText;
             Text.BeginValue = level.Price; Text.Color = lineColor;
             Text.FontSize = 10; Text.TransparentLabelBackground = 1;
             
@@ -241,7 +248,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         IN_HDR_CORE = 0, IN_TABLE_BUTTON_NUM, IN_TABLE_BUTTON_TEXT, IN_LINE_BUTTON_NUM, IN_LINE_BUTTON_TEXT,
         IN_LINE_TYPE, IN_DISPLAY_MODE, IN_HUD_PREFIX, IN_LABEL_FILTERS, IN_CHART_CONFIG, IN_AUTO_SCAN_INTERVAL,
         IN_CLUSTER_THRESHOLD, IN_CLUSTER_HANDLING, IN_HDR_TABLE, IN_TABLE_X, IN_TABLE_Y, IN_TABLE_RANGE_LEVELS, IN_FONT_SIZE, IN_FONT_COLOR, IN_BG_COLOR, IN_HIGHLIGHT_COLOR,
-        IN_HDR_LINE_SETTINGS, IN_LINE_STYLE, IN_LINE_WIDTH, IN_LINE_COLOR, IN_SHOW_LINE_LABELS, IN_SHORT_LINE_BARS, IN_LABEL_MARGIN,
+        IN_HDR_LINE_SETTINGS, IN_LINE_STYLE, IN_LINE_WIDTH, IN_LINE_COLOR, IN_SHOW_LINE_LABELS, IN_SHOW_LINE_PRICE, IN_SHORT_LINE_BARS, IN_LABEL_MARGIN,
         IN_HDR_SORT, IN_SORT_BY_1, IN_SORT_BY_2,
         IN_HDR_EXPORT, IN_EXPORT_ON_SCAN, IN_OUTPUT_DEST, IN_FILE_PATH, IN_USE_TEMPLATE, IN_TEMPLATE_PATH, IN_INCLUDE_CHART_NAME, IN_INCLUDE_DESCRIPTION
     };
@@ -382,6 +389,10 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
         sc.Input[IN_SHOW_LINE_LABELS].SetYesNo(1);
         sc.Input[IN_SHOW_LINE_LABELS].DisplayOrder = order++;
 
+        sc.Input[IN_SHOW_LINE_PRICE].Name = "Show Price on Lines";
+        sc.Input[IN_SHOW_LINE_PRICE].SetYesNo(1);
+        sc.Input[IN_SHOW_LINE_PRICE].DisplayOrder = order++;
+
         sc.Input[IN_SHORT_LINE_BARS].Name = "Short Line Length (Bars)";
         sc.Input[IN_SHORT_LINE_BARS].SetInt(20);
         sc.Input[IN_SHORT_LINE_BARS].SetIntLimits(1, 500);
@@ -504,7 +515,7 @@ SCSFExport scsf_LevelAggregator(SCStudyInterfaceRef sc) {
               sc.Input[IN_FONT_SIZE].GetInt(), sc.Input[IN_FONT_COLOR].GetColor(), sc.Input[IN_BG_COLOR].GetColor(), 
               sc.Input[IN_HIGHLIGHT_COLOR].GetColor(), sc.Input[IN_TABLE_RANGE_LEVELS].GetInt(), p_State->ForceRedraw);
     DrawLines(sc, p_State, p_State->AreLinesVisible, sc.Input[IN_LINE_STYLE].GetIndex(), sc.Input[IN_LINE_WIDTH].GetInt(),
-              sc.Input[IN_LINE_COLOR].GetColor(), sc.Input[IN_SHOW_LINE_LABELS].GetYesNo(), modeLineType, sc.Input[IN_SHORT_LINE_BARS].GetInt(), 
+              sc.Input[IN_LINE_COLOR].GetColor(), sc.Input[IN_SHOW_LINE_LABELS].GetYesNo(), sc.Input[IN_SHOW_LINE_PRICE].GetYesNo(), modeLineType, sc.Input[IN_SHORT_LINE_BARS].GetInt(), 
               sc.Input[IN_LABEL_MARGIN].GetInt(), p_State->ForceRedraw);
     DrawHUD(sc, p_State->AreLinesVisible, sc.Input[IN_HUD_PREFIX].GetString(), sc.Input[IN_TABLE_X].GetInt(), sc.Input[IN_TABLE_Y].GetInt(), sc.Input[IN_FONT_SIZE].GetInt(), sc.Input[IN_FONT_COLOR].GetColor());
     p_State->LastArraySize = sc.ArraySize;
