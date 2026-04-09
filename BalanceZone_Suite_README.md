@@ -50,12 +50,16 @@ Modify anchor behavior instantly by editing the rectangle's text label:
 As the market moves, archived anchors often project zones into areas price never visited. The Manager optimizes these automatically.
 
 - **Trigger**: Study Input `Run Shrink-Wrap Now` -> Set to **Yes** (auto-resets to No).
+- **Inputs**:
+    - **Base Labels**: Comma-separated list (e.g., `BZ,BAL`) to identify anchors.
+    - **Minimum Multiplier**: Ensures it doesn't shrink to 0 (default: 0).
+    - **Force Update**: By default, the manager excludes anchors with existing explicit multipliers (e.g., `BZ +6x,-2x`) to avoid overwriting manual settings. Set to **Yes** to bypass this safety.
 - **Logic**: 
-    1. Scans all `BZ` anchors.
+    1. Scans all matching anchors.
     2. Identifies the actual High/Low reached by price *horizontally inside* each anchor's bounds.
     3. Calculates the exact multipliers needed to cover only the realized price action.
-    4. Rewrites the label (e.g., `BZ` -> `BZ +5,-2`) while preserving all keywords and descriptions.
-- **Safety**: Excludes anchors with existing explicit multipliers unless "Force Update" is enabled.
+    4. Rewrites the label (e.g., `BZ` -> `BZ +5,-2`) while preserving all keywords, tiers, and descriptions.
+- **Safety**: Clamps results to the BZE engine limit (30x).
 
 ---
 

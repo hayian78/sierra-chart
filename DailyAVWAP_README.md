@@ -19,6 +19,25 @@
 * **Hotkeys:** None natively defined.
 * **Limitations:** Requires accurate tick-level volume from your data feed to properly compute the variance and volume-weighted mean.
 
+## Visual Configuration: Price Scale Labels
+
+For execution-focused charts (Footprint, DOM), it is often beneficial to move the Standard Deviation levels to the right-hand price axis (Y-axis) to reduce visual clutter while maintaining volatility context.
+
+### Setup Instructions
+1.  **Open Study Settings (F6)** and select the `Daily AVWAP` study.
+2.  Navigate to the **Subgraphs** tab.
+3.  For each enabled STD band (e.g., STD +1, STD -1):
+    *   Set **Draw Style** to `Subgraph Name and Value Labels Only` (this removes the line but keeps the text markers).
+    *   Enable **Value Label** (shows the price).
+    *   Enable **Name Label** (shows "STD +1").
+4.  **Note:** Using this specific Draw Style is the most reliable way to display labels on the price scale without horizontal "clutter" lines.
+
+### Trader's Strategy Note
+Moving levels to the axis is recommended for **ES/MES Scalping** to:
+*   **Clear Visual Real Estate:** Prevents horizontal lines from obscuring footprint delta or order flow imbalances.
+*   **Precision Targeting:** Provides the exact statistical "stretch points" (SD1/SD2) as fixed coordinates on the price scale for rapid limit-order placement.
+*   **Reduce Visual Fatigue:** Minimizes "visual fatigue" (spiderwebbing) on the chart during high-volatility sessions (RTH Open, FOMC).
+
 ## Developer Notes (ACSIL)
 * **DLL Name:** `DailyAVWAP`
 * **Build Requirements:** MSVC 2022+ / x64.
