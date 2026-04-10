@@ -83,12 +83,9 @@ static inline AnchorTextOverrides ParseAnchorTextOverrides(const SCString& toolT
     if (s.empty()) return out;
 
     size_t i = 0;
-    while (i < s.size() && std::isspace((unsigned char)s[i])) ++i;
-    size_t start = i;
     while (i < s.size() && !std::isspace((unsigned char)s[i])) ++i;
 
-    out.BaseLabel = (start < s.size()) ? s.substr(start, i - start) : std::string();
-    out.BaseLabel = TrimCopy(out.BaseLabel);
+    out.BaseLabel = s.substr(0, i);
 
     if (!out.BaseLabel.empty() && out.BaseLabel.back() == '*')
     {
@@ -188,18 +185,27 @@ SCSFExport scsf_BalanceZoneManager(SCStudyInterfaceRef sc)
         sc.Input[3].Name = "Force Update (Bypass explicit check)";
         sc.Input[3].SetYesNo(0);
 
+        sc.Input[4].Name = "Enable Debug Logging";
+        sc.Input[4].SetYesNo(0);
+
         sc.UpdateAlways = 0;
+        sc.CalculationPrecedence = LOW_PREC_LEVEL;
 
         return;
     }
 
-    // Zero-Lag Optimization: Early exit if trigger is not set
+    // Zero-Lag Optimization: Only run on full recalculation (triggered by input change or manual reset)
+    if (!sc.IsFullRecalculation)
+        return;
+
+    // Early exit if trigger is not set
     if (!sc.Input[0].GetYesNo())
         return;
 
     // Reset the input immediately to act as a one-time trigger
     sc.Input[0].SetYesNo(0);
         
+    bool debugLog = sc.Input[4].GetYesNo();
     std::vector<std::string> baseLabels;
     {
         SCString raw = sc.Input[1].GetString();
@@ -253,10 +259,13 @@ SCSFExport scsf_BalanceZoneManager(SCStudyInterfaceRef sc)
         double height = top - bot;
 
         // Diagnostic Logging
-        SCString diag;
-        diag.Format("BZ Debug: Label=%s, Top=%.2f, Bot=%.2f, H=%.2f, MaxP=%.2f, MinP=%.2f", 
-                    Tool.Text.GetChars(), top, bot, height, maxPrice, minPrice);
-        sc.AddMessageToLog(diag, 0);
+        if (debugLog)
+        {
+            SCString diag;
+            diag.Format("BZ Debug: Label=%s, Top=%.2f, Bot=%.2f, H=%.2f, MaxP=%.2f, MinP=%.2f", 
+                        Tool.Text.GetChars(), top, bot, height, maxPrice, minPrice);
+            sc.AddMessageToLog(diag, 0);
+        }
 
         if (height <= 0) continue;
 
