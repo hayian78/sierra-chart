@@ -58,5 +58,6 @@ The following modules represent the primary operational tools in this suite. Eac
 ## Technical & Engineering Standards
 
 * **Memory Management:** State persistence relies strictly on `sc.GetPersistentPointer` and `sc.AllocateMemory`. Static variables are strictly prohibited to ensure stability across chart reloads.
-* **Execution Efficiency:** Studies default to `sc.AutoLoop = 0` (Manual Looping) to securely handle historical accumulation. UI checks and drawing scans are restricted to fresh ticks or specific user actions.
+* **Execution Efficiency:** Studies default to `sc.AutoLoop = 0` (Manual Looping) to securely handle historical accumulation. UI checks and drawing scans are restricted to fresh ticks or specific user actions. Administrative tools (like the Balance Zone Manager) utilize `sc.IsFullRecalculation` gating to ensure **zero-lag** performance by remaining dormant during active trading.
+* **Calculation Precedence:** Critical execution studies are prioritized, while maintenance utilities are assigned `LOW_PREC_LEVEL` to ensure they do not impact trade management.
 * **Calculation Precision:** Volume-weighted metrics use `double` precision prior to standard deviation calculations to prevent truncation errors.

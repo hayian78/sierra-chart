@@ -4,9 +4,9 @@
 The **Balance Zone Suite** is a triad of high-performance Sierra Chart studies designed for Auction Market Theory (AMT) practitioners. It provides a unified framework for identifying, projecting, and maintaining balance-based structural levels across both charts and Trading DOMs.
 
 The suite comprises:
-1.  **Balance Zone Engine (BZE)**: The primary projection and lifecycle management engine.
-2.  **DOM Balance Zone**: A "zero-footprint" visual overlay for execution-focused Trading DOMs.
-3.  **Balance Zone Manager**: A maintenance utility for optimizing historical anchor distributions.
+1.  **[Balance Zone Engine (BZE)](BalanceZone_AutoExtend_Guide.md)**: The primary projection and lifecycle management engine.
+2.  **[DOM Balance Zone](DOMBalanceZone_README.md)**: A "zero-footprint" visual overlay for execution-focused Trading DOMs.
+3.  **[Balance Zone Manager](BalanceZoneManager_README.md)**: A maintenance utility for optimizing historical anchor distributions.
 
 ---
 
@@ -54,12 +54,16 @@ As the market moves, archived anchors often project zones into areas price never
     - **Base Labels**: Comma-separated list (e.g., `BZ,BAL`) to identify anchors.
     - **Minimum Multiplier**: Ensures it doesn't shrink to 0 (default: 0).
     - **Force Update**: By default, the manager excludes anchors with existing explicit multipliers (e.g., `BZ +6x,-2x`) to avoid overwriting manual settings. Set to **Yes** to bypass this safety.
+    - **Enable Debug Logging**: Set to **Yes** to see diagnostic output in the Sierra Chart Message Log (Input 4).
 - **Logic**: 
     1. Scans all matching anchors.
     2. Identifies the actual High/Low reached by price *horizontally inside* each anchor's bounds.
     3. Calculates the exact multipliers needed to cover only the realized price action.
     4. Rewrites the label (e.g., `BZ` -> `BZ +5,-2`) while preserving all keywords, tiers, and descriptions.
-- **Safety**: Clamps results to the BZE engine limit (30x).
+- **Performance Optimization**: 
+    - **Zero-Lag Dormant State**: The study utilizes `sc.IsFullRecalculation` to remain completely dormant during active trading. It only executes when a setting is changed or a manual recalculation is triggered (F5).
+    - **Low Precedence**: Runs at `LOW_PREC_LEVEL` to ensure it never interferes with price-critical execution studies.
+    - **Optimized Parsing**: High-speed string parsing logic handles complex labels with zero overhead.
 
 ---
 
@@ -67,7 +71,10 @@ As the market moves, archived anchors often project zones into areas price never
 
 ### Performance Architecture
 - **Manual Looping (`sc.AutoLoop = 0`)**: All tools utilize manual loops to ensure O(N) or better performance.
-- **Zero-Lag Gating**: `sc.UpdateAlways = 0` ensures studies remain dormant until a user action or fresh bar arrival occurs.
+- **Zero-Lag Gating**: 
+    - **BZE/DOM**: `sc.UpdateAlways = 0` ensures studies remain dormant until a user action or fresh bar arrival occurs.
+    - **Manager**: Uses `sc.IsFullRecalculation` gating. It performs **zero calculations per tick**, only running when explicitly triggered or configured.
+- **Calculation Precedence**: The Manager is set to `LOW_PREC_LEVEL` to prioritize execution-focused studies.
 - **Memory Safety**: Uses `sc.GetPersistentPointer` for cross-calculation state persistence.
 
 ### Installation
