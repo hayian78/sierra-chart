@@ -417,58 +417,6 @@ static inline AnchorTextOverrides ParseAnchorTextOverrides(const SCString& toolT
 // ----------------------------------------------------------------------------
 static inline int ClampInt(int v, int lo, int hi) { return (v < lo) ? lo : (v > hi) ? hi : v; }
 
-static inline COLORREF GetZoneFillColor(const SCStudyInterfaceRef& sc, ZoneSide side, int group /*0..3*/)
-{
-    group = ClampInt(group, 0, 3);
-
-    if (side == ZoneSide::Up)
-    {
-        switch (group)
-        {
-            case 0: return sc.Input[IN_UP_FILL_12].GetColor();
-            case 1: return sc.Input[IN_UP_FILL_36].GetColor();
-            case 2: return sc.Input[IN_UP_FILL_714].GetColor();
-            default:return sc.Input[IN_UP_FILL_1530].GetColor();
-        }
-    }
-    else
-    {
-        switch (group)
-        {
-            case 0: return sc.Input[IN_DN_FILL_12].GetColor();
-            case 1: return sc.Input[IN_DN_FILL_36].GetColor();
-            case 2: return sc.Input[IN_DN_FILL_714].GetColor();
-            default:return sc.Input[IN_DN_FILL_1530].GetColor();
-        }
-    }
-}
-
-static inline int GetZoneTransparency(const SCStudyInterfaceRef& sc, ZoneSide side, int group /*0..3*/)
-{
-    group = ClampInt(group, 0, 3);
-
-    if (side == ZoneSide::Up)
-    {
-        switch (group)
-        {
-            case 0: return ClampInt(sc.Input[IN_UP_TRANS_12].GetInt(), 0, 100);
-            case 1: return ClampInt(sc.Input[IN_UP_TRANS_36].GetInt(), 0, 100);
-            case 2: return ClampInt(sc.Input[IN_UP_TRANS_714].GetInt(), 0, 100);
-            default:return ClampInt(sc.Input[IN_UP_TRANS_1530].GetInt(), 0, 100);
-        }
-    }
-    else
-    {
-        switch (group)
-        {
-            case 0: return ClampInt(sc.Input[IN_DN_TRANS_12].GetInt(), 0, 100);
-            case 1: return ClampInt(sc.Input[IN_DN_TRANS_36].GetInt(), 0, 100);
-            case 2: return ClampInt(sc.Input[IN_DN_TRANS_714].GetInt(), 0, 100);
-            default:return ClampInt(sc.Input[IN_DN_TRANS_1530].GetInt(), 0, 100);
-        }
-    }
-}
-
 static inline COLORREF ResolveBorderColor(const SCStudyInterfaceRef& sc, COLORREF fill)
 {
     return (sc.Input[IN_BORDER_COLOR_MODE].GetInt() == 1)
@@ -535,9 +483,12 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
     };
 
     struct AnchorIDTracker {
-        // Key: Anchor LineNumber
-        // Value: Vector of active projection LineNumbers (Zones, Midlines, Labels)
+        // Key: Anchor LineNumber → vector of active projection LineNumbers (Zones, Midlines, Labels)
         std::unordered_map<int, std::vector<int>> activeMap;
+        // Highest m drawn last redraw, per anchor. Used to cap cleanup scans so we never
+        // scan all 30 slots if we never drew that high.
+        std::unordered_map<int, int> lastDrawnMaxUp;
+        std::unordered_map<int, int> lastDrawnMaxDown;
     };
 
     struct BZE_PersistentState {
@@ -546,8 +497,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         double LastProcessedPrice = 0.0;
         int LastProcessedBarIndex = 0;
     };
-
-    // NOTE: BZZoneHashCache was removed - zone hash skip optimization caused drawing issues and was disabled.
 
     if (sc.SetDefaults)
     {
@@ -886,11 +835,7 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
             delete pCache;
             sc.SetPersistentPointer(102, nullptr);
         }
-        
-        // Clear the previous zone label owner tracking
-        sc.SetPersistentPointer(103, nullptr);
-        
-        // Stage 1: Persistent Tracker Cleanup
+
         auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(104));
         if (pTracker != nullptr)
         {
@@ -905,7 +850,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
             sc.SetPersistentPointer(105, nullptr);
         }
 
-        // NOTE: Zone hash cache (persistent pointer 4) cleanup removed - optimization disabled.
         return;
     }
 
@@ -929,8 +873,6 @@ SCSFExport scsf_BalanceZoneProjector(SCStudyInterfaceRef sc)
         pState = new BZE_PersistentState;
         sc.SetPersistentPointer(105, pState);
     }
-    
-    // NOTE: Zone hash cache (persistent pointer 4) was removed - optimization disabled.
 
     const SCString currentLabelInput = sc.Input[IN_ANCHOR_LABELS].GetString();
     if (pCache->inputState != currentLabelInput)
@@ -1465,6 +1407,13 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     const int dnT714  = ClampInt(sc.Input[IN_DN_TRANS_714].GetInt(), 0, 100);
     const int dnT1530 = ClampInt(sc.Input[IN_DN_TRANS_1530].GetInt(), 0, 100);
 
+    // Fast-path lookup tables: indexed by GroupFromMultiplier(m) result (0..3).
+    // Used in the per-zone hot path inside DrawOne — avoids re-reading sc.Input on every zone.
+    const COLORREF upFillByGroup[4]   = { (COLORREF)upFill12, (COLORREF)upFill36, (COLORREF)upFill714, (COLORREF)upFill1530 };
+    const COLORREF dnFillByGroup[4]   = { (COLORREF)dnFill12, (COLORREF)dnFill36, (COLORREF)dnFill714, (COLORREF)dnFill1530 };
+    const int      upTransByGroup[4]  = { upT12, upT36, upT714, upT1530 };
+    const int      dnTransByGroup[4]  = { dnT12, dnT36, dnT714, dnT1530 };
+
     const int tier1N = sc.Input[IN_TIER1_COUNT].GetInt();
     const int tier2N = sc.Input[IN_TIER2_COUNT].GetInt();
 
@@ -1544,11 +1493,8 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     P_LastDnT1530     = dnT1530;
     P_LastAutoExtend  = autoExtendLatest ? 1 : 0;
 
-    // NOTE: Zone hash cache optimization was disabled due to causing drawing issues.
-    // The cache clear code is removed but inputsChanged is still used for redraw logic.
-
     const bool anchorsChanged = (P_LastAnchorCount != curAnchorCount);
-    P_LastAnchorCount = curAnchorCount; // Update NOW
+    P_LastAnchorCount = curAnchorCount;
 
     const bool isFullRecalc   = (sc.IsFullRecalculation != 0);
 
@@ -1595,20 +1541,15 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     }
 
     PrevForceRedrawState = forceRedrawNow ? 1 : 0;
-    
-    // If projections disappeared after rebuild, force redraw
-    bool projectionsMissing = false;
 
-    // Unified MakeBase function (used throughout)
+    // Anchor line number → stable per-anchor LineNumber base for derived drawings.
+    // Survives DLL rebuilds so UTAM_ADD_OR_ADJUST can update existing projections.
     auto MakeBase = [&](int anchorLine) -> int
     {
-        // Stable base derived from anchor LineNumber to avoid duplicates across DLL rebuilds
-        // and to allow UTAM_ADD_OR_ADJUST to update existing projections.
         const unsigned u = (unsigned)anchorLine;
         const unsigned masked = (u & 0x00FFFFFFu);
-        // Use uint64_t to prevent overflow
         const uint64_t product = (uint64_t)masked * (uint64_t)LINE_NUMBER_MULTIPLIER;
-        int base = (int)(product & 0x7FFFFFFFu); // keep positive
+        int base = (int)(product & 0x7FFFFFFFu);
         if (base < LINE_NUMBER_MIN_BASE) base += LINE_NUMBER_MIN_BASE;
         return base;
     };
@@ -1617,10 +1558,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     const int ANCHOR_MID_EXT_OFFSET = 9500;  // Anchor native midline extension
 
     auto Ln = [&](int base, int block, int m) -> int { return base + block + m; };
-
-    // ------------------------------------------------------------------
-    // Removed redundant projectionsMissing logic to prevent infinite loop.
-    // ------------------------------------------------------------------
 
     // Force redraw once after code upgrade
     if (pState->CodeVersion != BZE_BUILD)
@@ -1632,19 +1569,13 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     if (!shouldRedraw)
         return;
 
+    // Persist anchor geometry hash so subsequent calls can short-circuit when geometry is unchanged.
+    P_LastAnchorGeomHashLo = (int)(uint32_t)(curAnchorGeomHash & 0xFFFFFFFFu);
+    P_LastAnchorGeomHashHi = (int)(uint32_t)(curAnchorGeomHash >> 32);
+
     // Auto-reset manual trigger (only in manual mode)
     if (!autoRedraw && forceRedrawNow)
         sc.Input[IN_FORCE_REDRAW_NOW].SetYesNo(0);
-
-    // ------------------------------------------------------------------
-    // DROP-IN PATCH: If projections disappeared (common after DLL rebuild),
-    // force redraw even if inputs didn't change.
-    // ------------------------------------------------------------------
-
-    // ------------------------------------------------------------------
-    // DROP-IN PATCH: If projections disappeared (common after DLL rebuild),
-    // force redraw even if inputs didn't change.
-    // ------------------------------------------------------------------
 
     auto* pTracker = static_cast<AnchorIDTracker*>(sc.GetPersistentPointer(104));
     if (!pTracker) { pTracker = new AnchorIDTracker; sc.SetPersistentPointer(104, pTracker); }
@@ -1661,8 +1592,12 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             for (int id : it->second) {
                 sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, id);
             }
-            it->second.clear();
+            pTracker->activeMap.erase(it);
         }
+        // The anchor is gone — discard the per-anchor high-water marks too so
+        // the maps don't grow forever as users delete and re-add anchors.
+        pTracker->lastDrawnMaxUp.erase(anchorLine);
+        pTracker->lastDrawnMaxDown.erase(anchorLine);
     };
 
     auto DeleteLn = [&](int lineNumber) { 
@@ -1820,6 +1755,12 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         }
     }
 
+    // Parse overrides once per anchor and reuse across tier assignment, draw, and alerts.
+    std::unordered_map<int, AnchorTextOverrides> overridesByLine;
+    overridesByLine.reserve(anchors.size());
+    for (const auto& a : anchors)
+        overridesByLine.emplace(a.LineNumber, ParseAnchorTextOverrides(a.Text));
+
     if (!metas.empty())
     {
         int focusTaken = 0;
@@ -1828,7 +1769,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         // Pass 1: Handle explicit overrides
         for (const auto& m : metas)
         {
-            const AnchorTextOverrides ov = ParseAnchorTextOverrides(m.data->Text);
+            const AnchorTextOverrides& ov = overridesByLine[m.line];
             if (ov.HasTierOverride)
             {
                 tierMap[m.line] = ov.ExplicitTier;
@@ -1922,11 +1863,9 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
     };
 
     // Accept pre-parsed overrides to avoid 3x parsing per anchor
-    auto ProjectFromAnchor = [&](const AnchorData& src, ZoneTier tier, bool isLatest, const AnchorTextOverrides& ov)
+    auto ProjectFromAnchor = [&](const AnchorData& src, ZoneTier tier, bool isLatest, const AnchorTextOverrides& ov, int base)
     {
-        // Tier properties
         const bool isFocus   = (tier == ZoneTier::Focus);
-        const bool isContext = (tier == ZoneTier::Context);
         const bool isArchive = (tier == ZoneTier::Archive);
 
         // Defensive validation: Sierra Chart can sometimes return stale/corrupted indices
@@ -1979,16 +1918,20 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 		}
 
 
-		bool isTrimmedByChartHistory = false;
 		const SCDateTime earliestLoadedDT = sc.BaseDateTimeIn[earliestLoadedIndex];
 		const SCDateTime aLeftDT = (src.BeginDateTime < src.EndDateTime) ? src.BeginDateTime : src.EndDateTime;
-		// Fix: Only compare datetimes if both are valid (non-zero). When aLeftDT is 0/uninitialized
-		// (can happen for rightmost anchors extending beyond loaded bars), skip the datetime check
-		// to avoid incorrectly resetting drawLeftIndex to 0.
+		// Only compare datetimes when both are valid. If aLeftDT is uninitialized (can happen for
+		// rightmost anchors extending beyond loaded bars), skip the comparison to avoid incorrectly
+		// resetting drawLeftIndex to 0.
 		const bool bothDateTimesValid = (aLeftDT.IsDateSet() && earliestLoadedDT.IsDateSet());
+#ifdef BZE_DEBUG_LOGGING
+		bool isTrimmedByChartHistory = false;
+#endif
 		if (drawLeftIndex < earliestLoadedIndex || (bothDateTimesValid && aLeftDT < earliestLoadedDT))
 		{
+#ifdef BZE_DEBUG_LOGGING
 			isTrimmedByChartHistory = true;
+#endif
 			drawLeftIndex = earliestLoadedIndex;
 		}
 
@@ -2016,9 +1959,6 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 #endif
 
         const int anchorLine = src.LineNumber;
-        const int base       = MakeBase(anchorLine);
-
-        // Use pre-parsed overrides (passed in from caller)
 
         int localMaxUp   = ApplyOverrideToMax(ov.HasUp,   ov.UpIsX,   ov.Up,   maxUp);
         int localMaxDown = ApplyOverrideToMax(ov.HasDown, ov.DownIsX, ov.Down, maxDown);
@@ -2043,55 +1983,47 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
         auto DrawOne = [&](ZoneSide side, int m, double projTop, double projBot)
         {
-            // For m=0 (anchor zone), use the anchor's own colors
-            // For all other zones, use the standard zone color logic
+            const bool isUp = (side == ZoneSide::Up);
+
+            // For m=0 (anchor zone), use the anchor's own colors.
+            // For all other zones, look up by zone group via cached arrays.
             COLORREF fill;
             int transparency;
             COLORREF border;
-            
+
             if (m == 0)
             {
-                // Use anchor's colors for the extended anchor zone
-                fill = src.SecondaryColor;  // Anchor fill color
-                border = src.Color;          // Anchor border color
+                fill = src.SecondaryColor;
+                border = src.Color;
                 transparency = src.TransparencyLevel;
-                
-                // If colors are unset, use a reasonable default
+
                 if (fill == 0 && border == 0)
                 {
-                    const int group = 0;
-                    fill = GetZoneFillColor(sc, side, group);
-                    transparency = GetZoneTransparency(sc, side, group);
+                    fill         = isUp ? upFillByGroup[0]  : dnFillByGroup[0];
+                    transparency = isUp ? upTransByGroup[0] : dnTransByGroup[0];
                     const bool wantBorder = (tier == ZoneTier::Focus || tier == ZoneTier::Archive);
                     border = wantBorder ? ResolveBorderColor(sc, fill) : fill;
                 }
             }
             else
             {
-                // Standard zone color logic for m >= 1
                 const int group = GroupFromMultiplier(m);
-                fill = GetZoneFillColor(sc, side, group);
-                transparency = GetZoneTransparency(sc, side, group);
+                fill         = isUp ? upFillByGroup[group]  : dnFillByGroup[group];
+                transparency = isUp ? upTransByGroup[group] : dnTransByGroup[group];
                 const bool wantBorder = (tier == ZoneTier::Focus || tier == ZoneTier::Archive);
                 border = wantBorder ? ResolveBorderColor(sc, fill) : fill;
             }
 
-            // Stage 2: ARCHIVE tier visual boost (Relative boost)
+            // Archive tier: lift transparency by 60% of remaining range so faded zones stay visible.
             if (isArchive)
             {
-                // Add 60% of the remaining transparency range to avoid full invisibility
                 transparency = transparency + (int)((100 - transparency) * 0.60);
                 transparency = ClampInt(transparency, 0, 100);
             }
 
-            const bool isUp = (side == ZoneSide::Up);
-
             int lnFill   = isUp ? Ln(base, UP_FILL_OFFSET, m)   : Ln(base, DN_FILL_OFFSET, m);
             int lnBorder = isUp ? Ln(base, UP_BORDER_OFFSET, m) : Ln(base, DN_BORDER_OFFSET, m);
 
-            // NOTE: Zone hash skip optimization was DISABLED - caused missing zone draws.
-            // Always call UseTool to ensure reliable drawing.
-            
             // Fill rectangle (outline+fill in one tool)
             s_UseTool tFill;
             tFill.Clear();
@@ -2319,7 +2251,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             DeleteLn(Ln(base, ANCHOR_MID_EXT_OFFSET, 0));
         }
 
-        // Up projections - Optimization #9: Only loop to actual localMaxUp instead of hardcoded 30
+        // Up projections — only draw what's enabled.
         const int upLoopMax = localEnableUp ? localMaxUp : 0;
         for (int m = 1; m <= upLoopMax; ++m)
         {
@@ -2328,12 +2260,15 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             const double projBot = SnapToIncrement(snappedBot + offset);
             DrawOne(ZoneSide::Up, m, projTop, projBot);
         }
-        
-        // Clean up unused up zones (from localMaxUp+1 to 30)
-        // Only do this if we previously had more zones (optimization: skip if upLoopMax is already at max)
-        if (upLoopMax < 30)
+
+        // Clean up zones we previously drew but no longer want.
+        // Bounded by the last-drawn high-water mark to avoid scanning all 30 slots when we only ever drew a few.
+        // If we have no record for this anchor (first time seen this session, e.g. after study reload),
+        // scan the full range to catch any stale drawings that survived the reload.
         {
-            for (int m = upLoopMax + 1; m <= 30; ++m)
+            auto itHWM = pTracker->lastDrawnMaxUp.find(anchorLine);
+            const int prevMaxUp = (itHWM != pTracker->lastDrawnMaxUp.end()) ? itHWM->second : 30;
+            for (int m = upLoopMax + 1; m <= prevMaxUp; ++m)
             {
                 DeleteLn(Ln(base, UP_FILL_OFFSET,    m));
                 DeleteLn(Ln(base, UP_BORDER_OFFSET,  m));
@@ -2342,9 +2277,10 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 DeleteLn(Ln(base, UP_TOPTEXT_OFFSET, m));
                 DeleteLn(Ln(base, UP_BOTTEXT_OFFSET, m));
             }
+            pTracker->lastDrawnMaxUp[anchorLine] = upLoopMax;
         }
 
-        // Down projections - Optimization #9: Only loop to actual localMaxDown instead of hardcoded 30
+        // Down projections — only draw what's enabled.
         const int downLoopMax = localEnableDown ? localMaxDown : 0;
         for (int m = 1; m <= downLoopMax; ++m)
         {
@@ -2353,11 +2289,11 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             const double projBot = SnapToIncrement(snappedBot - offset);
             DrawOne(ZoneSide::Down, m, projTop, projBot);
         }
-        
-        // Clean up unused down zones (from localMaxDown+1 to 30)
-        if (downLoopMax < 30)
+
         {
-            for (int m = downLoopMax + 1; m <= 30; ++m)
+            auto itHWM = pTracker->lastDrawnMaxDown.find(anchorLine);
+            const int prevMaxDown = (itHWM != pTracker->lastDrawnMaxDown.end()) ? itHWM->second : 30;
+            for (int m = downLoopMax + 1; m <= prevMaxDown; ++m)
             {
                 DeleteLn(Ln(base, DN_FILL_OFFSET,    m));
                 DeleteLn(Ln(base, DN_BORDER_OFFSET,  m));
@@ -2366,6 +2302,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
                 DeleteLn(Ln(base, DN_TOPTEXT_OFFSET, m));
                 DeleteLn(Ln(base, DN_BOTTEXT_OFFSET, m));
             }
+            pTracker->lastDrawnMaxDown[anchorLine] = downLoopMax;
         }
     };
 
@@ -2394,10 +2331,24 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
         return out;
     };
 
-    auto DrawZoneNameLabelsForAnchor = [&](const AnchorData& src, ZoneTier tier, const AnchorTextOverrides& ov) -> void
+    // Precompute the eight unique zone-name strings (templates only depend on inputs,
+    // not on the anchor). Saves 8 × N string find/replace calls per redraw.
+    const SCString upZoneLabel[4]   = {
+        MakeZoneLabelText(zoneLabelUpTpl, 2),
+        MakeZoneLabelText(zoneLabelUpTpl, 4),
+        MakeZoneLabelText(zoneLabelUpTpl, 8),
+        MakeZoneLabelText(zoneLabelUpTpl, 16),
+    };
+    const SCString downZoneLabel[4] = {
+        MakeZoneLabelText(zoneLabelDownTpl, 2),
+        MakeZoneLabelText(zoneLabelDownTpl, 4),
+        MakeZoneLabelText(zoneLabelDownTpl, 8),
+        MakeZoneLabelText(zoneLabelDownTpl, 16),
+    };
+
+    auto DrawZoneNameLabelsForAnchor = [&](const AnchorData& src, ZoneTier tier, const AnchorTextOverrides& ov, int base) -> void
     {
         const int anchorLine = src.LineNumber;
-        const int base       = MakeBase(anchorLine);
 
         // Mode check
         bool eligible = false;
@@ -2538,8 +2489,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             t.Region      = src.Region;
             t.BeginIndex  = xIndex;
             t.BeginValue  = mid;
-            // ARCHIVE Tier Color Shift
-            t.Color       = isArchive ? RGB(160, 160, 160) : labelColor;
+            t.Color       = labelColor;
             t.FontSize    = zoneLabelFontSize;
             t.LineNumber  = Ln(base, ZN_TEXT_OFFSET, code);
             t.AddMethod   = UTAM_ADD_OR_ADJUST;
@@ -2581,57 +2531,38 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
         for (const auto& b : bands)
         {
-            if (b.up)
+            // X ∈ {2,4,8,16} → index 0..3 (log2(X) - 1).
+            const int xIdx = (b.X == 2) ? 0 : (b.X == 4) ? 1 : (b.X == 8) ? 2 : 3;
+            // End rect for band X is (2X - 2): 2->2, 4->6, 8->14, 16->30.
+            const int bandEndRect = 2 * b.X - 2;
+            const bool enabled = b.up ? localEnableUp : localEnableDown;
+            const int  localMax = b.up ? localMaxUp   : localMaxDown;
+
+            if (!enabled || localMax < bandEndRect)
             {
-                // To display the X label, the anchor must actually project through the end of the X band.
-                // End rect for band X is (2X - 2): 2->2, 4->6, 8->14, 16->30.
-                const int bandEndRect = 2 * b.X - 2;
-                if (!localEnableUp || localMaxUp < bandEndRect)
-                {
-                    DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
-                    continue;
-                }
-                const SCString txt = MakeZoneLabelText(zoneLabelUpTpl, b.X);
-                if (txt.GetLength() > 0)
-                    DrawText(b.code, true, b.X, txt);
-                else
-                    DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
+                DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
+                continue;
             }
+
+            const SCString& txt = b.up ? upZoneLabel[xIdx] : downZoneLabel[xIdx];
+            if (txt.GetLength() > 0)
+                DrawText(b.code, b.up, b.X, txt);
             else
-            {
-                const int bandEndRect = 2 * b.X - 2;
-                if (!localEnableDown || localMaxDown < bandEndRect)
-                {
-                    DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
-                    continue;
-                }
-                const SCString txt = MakeZoneLabelText(zoneLabelDownTpl, b.X);
-                if (txt.GetLength() > 0)
-                    DrawText(b.code, false, b.X, txt);
-                else
-                    DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
-            }
+                DeleteLn(Ln(base, ZN_TEXT_OFFSET, b.code));
         }
     };
 
     for (const AnchorData* pA : anchorsToProcess)
     {
-        // NOTE: Per-anchor skip optimization (#8) was DISABLED due to causing inconsistent redraws.
-        // The zone-level hashing inside DrawOne still provides optimization by skipping unchanged UseTool calls.
-        // This ensures every anchor is always processed when a redraw is triggered.
-        
-        // Find tier for this anchor
         ZoneTier tier = ZoneTier::Archive;
-        auto it = tierMap.find(pA->LineNumber);
-        if (it != tierMap.end()) tier = it->second;
+        auto itTier = tierMap.find(pA->LineNumber);
+        if (itTier != tierMap.end()) tier = itTier->second;
 
-        // Parse once per anchor (was previously parsed 3x: here, in ProjectFromAnchor, and in DrawZoneNameLabels)
-        const AnchorTextOverrides ov = ParseAnchorTextOverrides(pA->Text);
-        const bool isLatest = (pA->LineNumber == latestAnchorPtr->LineNumber);
-        ProjectFromAnchor(*pA, tier, isLatest, ov);  // Pass pre-parsed overrides
-
-        // Draw labels based on new tiered logic
-        DrawZoneNameLabelsForAnchor(*pA, tier, ov);
+        const AnchorTextOverrides& ov = overridesByLine[pA->LineNumber];
+        const bool isLatest = (latestAnchorPtr != nullptr && pA->LineNumber == latestAnchorPtr->LineNumber);
+        const int base = MakeBase(pA->LineNumber);
+        ProjectFromAnchor(*pA, tier, isLatest, ov, base);
+        DrawZoneNameLabelsForAnchor(*pA, tier, ov, base);
     }
 
     // --------------------
@@ -2658,10 +2589,16 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             price = sc.Close[lastIndex];
     }
 
+    if (latestAnchorPtr == nullptr)
+    {
+        ClearAlertSubgraphs();
+        return;
+    }
+
     const double snappedPrice = SnapToIncrement(price);
     const AnchorData& srcAnchor = *latestAnchorPtr;
 
-    AnchorTextOverrides aov = ParseAnchorTextOverrides(srcAnchor.Text);
+    const AnchorTextOverrides& aov = overridesByLine[srcAnchor.LineNumber];
 
     int alertMaxUp   = ApplyOverrideToMax(aov.HasUp,   aov.UpIsX,   aov.Up,   maxUp);
     int alertMaxDown = ApplyOverrideToMax(aov.HasDown, aov.DownIsX, aov.Down, maxDown);
@@ -2756,7 +2693,7 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
 
     const int prevZone = pState->PrevZone;
 
-    // --- Stage 4: Alert System Robustness (Mathematical O(1) Gap Detection) ---
+    // Gap detection: O(1) check that catches boundary crossings even when price jumps across multiple zones.
     const bool useGapDetection = (sc.Input[IN_ALERT_USE_GAP_DETECTION].GetYesNo() != 0);
     const bool includeBarHL    = (sc.Input[IN_ALERT_INCLUDE_BAR_HL].GetYesNo() != 0);
 
@@ -2770,21 +2707,11 @@ const double labelOffsetPrice = (snapIncDraw > 0.0) ? (snapIncDraw * 0.5) : 0.0;
             pState->LastProcessedBarIndex = lastIndex;
         }
 
-        double pathLow, pathHigh;
-        if (lastIndex > pState->LastProcessedBarIndex)
+        double pathLow  = (std::min)(snappedPrice, pState->LastProcessedPrice);
+        double pathHigh = (std::max)(snappedPrice, pState->LastProcessedPrice);
+        if (includeBarHL && lastIndex > pState->LastProcessedBarIndex)
         {
-            pathLow  = (std::min)(snappedPrice, pState->LastProcessedPrice);
-            pathHigh = (std::max)(snappedPrice, pState->LastProcessedPrice);
-
-            if (includeBarHL)
-            {
-                pathLow  = (std::min)(pathLow,  (double)sc.Low[lastIndex]);
-                pathHigh = (std::max)(pathHigh, (double)sc.High[lastIndex]);
-            }
-        }
-        else
-        {
-            pathLow = (std::min)(snappedPrice, pState->LastProcessedPrice);
+            pathLow  = (std::min)(pathLow,  (double)sc.Low[lastIndex]);
             pathHigh = (std::max)(pathHigh, (double)sc.High[lastIndex]);
         }
 
