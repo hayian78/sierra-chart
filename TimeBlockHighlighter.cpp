@@ -80,7 +80,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     
     // Performance enhancements
     SCInputRef EnableHashCachingInput = sc.Input[26];
-    SCInputRef IncrementalModeInput   = sc.Input[27];
+    // sc.Input[27] reserved (was IncrementalMode — removed; caused stale-rectangle bug on new-bar updates)
 
     if (sc.SetDefaults)
     {
@@ -324,10 +324,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         EnableHashCachingInput.Name = "Enable Hash Caching (skip redraw if nothing changed)";
         EnableHashCachingInput.SetYesNo(1);
         EnableHashCachingInput.DisplayOrder = dispOrder++;
-        
-        IncrementalModeInput.Name = "Incremental Update Mode (process only new bars)";
-        IncrementalModeInput.SetYesNo(1);
-        IncrementalModeInput.DisplayOrder = dispOrder++;
 
         return;
     }
@@ -341,10 +337,12 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     int& LastTzTickDrawCount = sc.GetPersistentInt(2);
     int& LastMarkerDrawCount = sc.GetPersistentInt(6);  // Time Markers cleanup counter
     
-    // Hash caching and incremental mode
+    // Hash caching
     int& LastInputHash       = sc.GetPersistentInt(3);
     int& LastArraySize       = sc.GetPersistentInt(4);
-    int& LastProcessedIndex  = sc.GetPersistentInt(5);
+    // sc.GetPersistentInt(5) reserved (was LastProcessedIndex for IncrementalMode — removed)
+
+    const int kMaxSessionSegments = 9999;
 
     // Session times
     const int    enableA = EnableAInput.GetYesNo();
@@ -378,7 +376,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
     const int stableMode = StableRenderInput.GetYesNo();
     const int enableHashCaching = EnableHashCachingInput.GetYesNo();
-    const int incrementalMode = IncrementalModeInput.GetYesNo();
 
     // Base line number for this study instance
     const int baseLine = sc.StudyGraphInstanceID * 100000;
@@ -537,9 +534,17 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         currentHash ^= onlyToday;
         currentHash ^= labelSize;
         currentHash ^= (int)labelColor;
+        // Label style inputs that affect DrawSegment
+        currentHash ^= TextAlignment.GetInt();
+        currentHash ^= (int)(labelYOffset * 100);
         currentHash ^= showTzTicks;
         currentHash ^= tzOffsetHHMM;
         currentHash ^= tickEveryMin;
+        // TZ tick style inputs (changes were silently skipped)
+        currentHash ^= (int)tickColor;
+        currentHash ^= tickFontSize;
+        currentHash ^= tickFmt;
+        currentHash ^= maxTzTicks;
         currentHash ^= stableMode;
         currentHash ^= sc.ArraySize;
         
@@ -620,30 +625,13 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
     if (onlyToday && scanStart < firstToday)
         scanStart = firstToday;
-    
-    // -------------------- Incremental Mode: Process only when new bars are added --------------------
-    //
-    // Previously this logic always narrowed the scan range on *any* non-full
-    // recalculation, including simple pans/zooms. That caused older session
-    // segments (like most of the Globex block) to be deleted and only the
-    // most recent portion to remain. Now we only apply the incremental
-    // narrowing when the underlying data series has actually grown.
-    if (incrementalMode && !sc.IsFullRecalculation && sc.ArraySize > LastProcessedIndex + 1)
-    {
-        // Only process from the last processed index onwards
-        if (LastProcessedIndex >= 0 && LastProcessedIndex < sc.ArraySize)
-        {
-            // Expand scan range backwards a bit to catch segment boundaries
-            const int safetyMargin = 50;
-            int incrementalStart = (LastProcessedIndex - safetyMargin < 0) ? 0 : (LastProcessedIndex - safetyMargin);
-            
-            if (incrementalStart > scanStart)
-                scanStart = incrementalStart;
-        }
-    }
-    
-    // Update last processed index
-    LastProcessedIndex = sc.ArraySize - 1;
+
+    // Note: an "Incremental Mode" scan-range narrowing used to live here. It was
+    // removed because session line numbers are positional inside the scan window
+    // (rectBase + 2*segCount), so narrowing the window on a new-bar tick caused
+    // historical session rectangles to be deleted or overwritten. The session
+    // loop is already O(sessions) via GetNearestMatchForSCDateTime jump-ahead,
+    // so always scanning [0, ArraySize-1] is cheap.
 
     // -------------------- Shared box vertical bounds (relative %) --------------------
     float boxBegin = 0.0f;
@@ -823,7 +811,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     if (enableA)
     {
         int i = scanStart;
-        while (i <= scanEnd && segCountA < 9999)
+        while (i <= scanEnd && segCountA < kMaxSessionSegments)
         {
             SCDateTime dt = sc.BaseDateTimeIn[i];
             
@@ -850,7 +838,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         // ---- FUTURE PROJECTION: Extend active session A into blank space ----
         SCDateTime lastBarDT = sc.BaseDateTimeIn[sc.ArraySize - 1];
-        if (extendActive && ShouldHighlight(lastBarDT, startA, endA) && scanEnd == sc.ArraySize - 1 && segCountA < 9999)
+        if (extendActive && ShouldHighlight(lastBarDT, startA, endA) && scanEnd == sc.ArraySize - 1 && segCountA < kMaxSessionSegments)
         {
             SCDateTime sDT, eDT;
             GetNextSessionBounds(startA, endA, lastBarDT, sDT, eDT, false);
@@ -929,7 +917,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         }
 
         // ---- FUTURE PROJECTION: Preview upcoming session A ----
-        if (previewUpcoming && segCountA < 9999)
+        if (previewUpcoming && segCountA < kMaxSessionSegments)
         {
             SCDateTime sDT, eDT;
             GetNextSessionBounds(startA, endA, latestDT, sDT, eDT, true);
@@ -1018,7 +1006,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     if (enableB)
     {
         int i = scanStart;
-        while (i <= scanEnd && segCountB < 9999)
+        while (i <= scanEnd && segCountB < kMaxSessionSegments)
         {
             SCDateTime dt = sc.BaseDateTimeIn[i];
             
@@ -1045,7 +1033,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         // ---- FUTURE PROJECTION: Extend active session B into blank space ----
         SCDateTime lastBarDT = sc.BaseDateTimeIn[sc.ArraySize - 1];
-        if (extendActive && ShouldHighlight(lastBarDT, startB, endB) && scanEnd == sc.ArraySize - 1 && segCountB < 9999)
+        if (extendActive && ShouldHighlight(lastBarDT, startB, endB) && scanEnd == sc.ArraySize - 1 && segCountB < kMaxSessionSegments)
         {
             SCDateTime sDT, eDT;
             GetNextSessionBounds(startB, endB, lastBarDT, sDT, eDT, false);
@@ -1123,7 +1111,7 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         }
 
         // ---- FUTURE PROJECTION: Preview upcoming session B ----
-        if (previewUpcoming && segCountB < 9999)
+        if (previewUpcoming && segCountB < kMaxSessionSegments)
         {
             SCDateTime sDT, eDT;
             GetNextSessionBounds(startB, endB, latestDT, sDT, eDT, true);
@@ -1630,7 +1618,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
         const int lineNum  = markerBase + 2 * markerDrawIndex;
         const int labelNum = markerBase + 2 * markerDrawIndex + 1;
         int vi = FutureBarIndex(markerDT);
-        // sc.AddMessageToLog(sc.GraphShortName + SCString(": DrawFutureMarker called, vi=") + SCString(vi) + SCString(" label=") + SCString(marker.label), 0);
 
         // DRAWING_LINE with virtual bar index for future space
         s_UseTool L;
@@ -1690,7 +1677,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
 
         if (eDT > latestDT)
         {
-        // sc.AddMessageToLog(sc.GraphShortName + SCString(": FutureMarkersForSession s=") + SCString((int)(s*1440)) + SCString("m e=") + SCString((int)(e*1440)) + SCString("m sDT=") + sc.DateTimeToString(sDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" eDT=") + sc.DateTimeToString(eDT, FLAG_DT_COMPLETE_DATETIME) + SCString(" mrkCnt=") + SCString(markerCount), 0);
             for (int m = 0; m < markerCount; ++m)
             {
                 if (IsTimeInWindow(markers[m].time, s, e))
@@ -1710,15 +1696,12 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     // Draw future markers for active sessions
     if (extendActive)
     {
-        // sc.AddMessageToLog(sc.GraphShortName + SCString(": extendActive=true, enableA=") + SCString(enableA) + SCString(" enableB=") + SCString(enableB), 0);
         if (enableA && ShouldHighlight(latestDT, startA, endA))
         {
-            // sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session A"), 0);
             DrawFutureMarkersForSession(startA, endA, latestDT, false);
         }
         if (enableB && ShouldHighlight(latestDT, startB, endB))
         {
-            // sc.AddMessageToLog(sc.GraphShortName + SCString(": Drawing future markers for active session B"), 0);
             DrawFutureMarkersForSession(startB, endB, latestDT, false);
         }
     }
@@ -1726,7 +1709,6 @@ SCSFExport scsf_TimeBlockHighlighter(SCStudyInterfaceRef sc)
     // Draw future markers for upcoming preview sessions
     if (previewUpcoming)
     {
-        // sc.AddMessageToLog(sc.GraphShortName + SCString(": previewUpcoming=true"), 0);
         if (enableA)
         {
             SCDateTime sDT, eDT;
